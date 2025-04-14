@@ -1,12 +1,9 @@
 from __future__ import annotations
-
 import json
 import uuid
 from typing import Dict
-
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-
 from chat import GeminiChat
 
 # ---------------------------------------------------------------------------

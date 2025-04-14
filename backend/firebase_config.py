@@ -1,8 +1,6 @@
 from __future__ import annotations
-
 import os
 from typing import Final
-
 import firebase_admin
 from dotenv import load_dotenv
 from firebase_admin import credentials, firestore

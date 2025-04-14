@@ -1,12 +1,8 @@
 from __future__ import annotations
-
 import os
-from copy import deepcopy
 from typing import Any, Dict, List
-
 import requests
 from dotenv import load_dotenv
-
 import firebase_config
 
 # ---------------------------------------------------------------------------
