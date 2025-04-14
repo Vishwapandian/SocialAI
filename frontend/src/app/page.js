@@ -13,7 +13,6 @@ export default function Home() {
   const [sessionId, setSessionId] = useState(null);
   const messagesEndRef = useRef(null);
   const { user, logout } = useAuth();
-  const [hasInteracted, setHasInteracted] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -23,60 +22,38 @@ export default function Home() {
     scrollToBottom();
   }, [messages]);
 
-  // Handle page load and unload events
+  // Handle cleanup when component unmounts
   useEffect(() => {
-    // Function to end chat session
-    const endChat = async () => {
-      if (sessionId && user?.uid && hasInteracted) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 1000);
-          
-          await fetch('http://localhost:5000/api/end-chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-              sessionId,
-              userId: user.uid
-            }),
-            credentials: 'include',
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-        } catch (error) {
-          console.error('Error ending chat session:', error);
-        }
+    return () => {
+      // End chat session when component unmounts
+      if (sessionId && user?.uid) {
+        endChatSession();
+      }
+    };
+  }, [sessionId, user]);
+
+  // Add event listener for page unload (refresh or close)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (sessionId && user?.uid) {
+        // Use sendBeacon for more reliable delivery during page unload
+        const data = JSON.stringify({ 
+          sessionId: sessionId,
+          userId: user.uid
+        });
+        navigator.sendBeacon('http://localhost:5000/api/end-chat', data);
       }
     };
 
-    // Add event listeners for page unload
-    const handleBeforeUnload = (e) => {
-      if (hasInteracted && messages.length > 1) {
-        endChat();
-        
-        // This message is typically ignored by modern browsers,
-        // but we include it for older browsers
-        e.preventDefault();
-        e.returnValue = '';
-        return '';
-      }
-    };
-
-    // Register event listeners
     window.addEventListener('beforeunload', handleBeforeUnload);
     
-    // Clean up event listeners when component unmounts
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      endChat();
     };
-  }, [sessionId, user, hasInteracted, messages.length]);
+  }, [sessionId, user]);
 
   const endChatSession = async () => {
-    if (!sessionId || !user?.uid || !hasInteracted) return;
+    if (!sessionId || !user?.uid) return;
     
     try {
       await fetch('http://localhost:5000/api/end-chat', {
@@ -99,9 +76,6 @@ export default function Home() {
     e.preventDefault();
     
     if (!input.trim()) return;
-    
-    // Mark as interacted once user sends a message
-    setHasInteracted(true);
     
     // Add user message
     setMessages(prev => [...prev, { role: 'user', content: input }]);
@@ -145,7 +119,7 @@ export default function Home() {
   const handleLogout = async () => {
     try {
       // End chat session before logging out
-      if (sessionId && user?.uid && hasInteracted) {
+      if (sessionId && user?.uid) {
         await endChatSession();
       }
       
@@ -155,7 +129,6 @@ export default function Home() {
       setMessages([
         { role: 'assistant', content: 'Hello! I\'m Neko the cat. Ask me anything! Meow~' }
       ]);
-      setHasInteracted(false);
     } catch (error) {
       console.error('Failed to log out:', error);
     }
