@@ -1,189 +1,143 @@
-import requests
+from __future__ import annotations
+
 import os
+from copy import deepcopy
+from typing import Any, Dict, List
+
+import requests
 from dotenv import load_dotenv
+
 import firebase_config
 
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 load_dotenv()
-API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Set model name here for flexibility
-MODEL_NAME = "gemini-2.0-flash-lite"
+API_KEY: str | None = os.getenv("GEMINI_API_KEY")
+if not API_KEY:
+    raise RuntimeError("Environment variable GEMINI_API_KEY is not set")
 
-# API endpoint using the model name
-URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
+MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+GEMINI_URL: str = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
+)
 
-# Initial system instruction template
-SYSTEM_INSTRUCTION_TEMPLATE = {
-    "parts": [
-        {"text": "You are a cat. Your name is Neko. You respond like a cute but sarcastic cat. Here is what you know about the user: {user_memory}"}
-    ]
-}
-
-# Generation configuration (tweak these as needed)
-generation_config = {
+DEFAULT_GENERATION_CFG: Dict[str, Any] = {
     "stopSequences": [],
     "temperature": 1.0,
     "maxOutputTokens": 100,
     "topP": 0.95,
-    "topK": 10
+    "topK": 10,
 }
 
-# Chat history for the API function
-api_chat_history = []
+_SYSTEM_TEMPLATE: str = (
+    "You are a cat. Your name is Neko. You respond like a cute but sarcastic cat. "
+    "Here is what you know about the user: {user_memory}"
+)
 
-def get_response(user_message, user_id=None):
-    """Get a response from the Gemini API for a single message."""
-    global api_chat_history
-    
-    # Get user memory if user_id is provided
-    user_memory = ""
-    if user_id:
-        user_memory = firebase_config.get_user_memory(user_id)
-    
-    # Create system instruction with user memory
-    system_instruction = SYSTEM_INSTRUCTION_TEMPLATE.copy()
-    system_instruction["parts"][0]["text"] = system_instruction["parts"][0]["text"].format(user_memory=user_memory)
-    
-    # Append user message to chat history
-    api_chat_history.append({
-        "role": "user",
-        "parts": [{"text": user_message}]
-    })
+# ---------------------------------------------------------------------------
+# Core Gemini wrapper
+# ---------------------------------------------------------------------------
+class GeminiChat:
+    """Conversation manager for a single user/session."""
 
-    # Build the payload with generation config
-    payload = {
-        "system_instruction": system_instruction,
-        "contents": api_chat_history,
-        "generationConfig": generation_config
-    }
+    def __init__(self, user_id: str | None = None) -> None:
+        self.user_id = user_id
+        self._history: List[Dict[str, Any]] = []
+        self._http = requests.Session()
 
-    response = requests.post(URL, json=payload)
+    # ---------------------------------------------------------------------
+    # Public helpers
+    # ---------------------------------------------------------------------
+    @property
+    def history(self) -> List[Dict[str, Any]]:
+        """Expose chat history (read‑only)."""
+        return self._history
 
-    if response.status_code == 200:
-        try:
-            res_json = response.json()
-            ai_response = res_json["candidates"][0]["content"]["parts"][0]["text"]
-            
-            # Append model reply to chat history
-            api_chat_history.append({
-                "role": "model",
-                "parts": [{"text": ai_response}]
-            })
-            
-            return ai_response
+    def send(self, message: str) -> str:
+        """Send *message* to Gemini and return the model reply."""
+        self._append("user", message)
 
-        except Exception as e:
-            return f"Error parsing response: {str(e)}"
-    else:
-        return f"Request failed with status code: {response.status_code}"
-
-def summarize_chat(user_id):
-    """Summarize the chat history and update user memory."""
-    if not api_chat_history or not user_id:
-        return False
-    
-    # Create a prompt for summarization
-    summary_prompt = "Please summarize the following conversation in a concise way that captures the key points and user preferences:"
-    
-    # Format the chat history for summarization
-    chat_text = ""
-    for message in api_chat_history:
-        role = "User" if message["role"] == "user" else "Neko"
-        text = message["parts"][0]["text"]
-        chat_text += f"{role}: {text}\n"
-    
-    # Get the current memory
-    current_memory = firebase_config.get_user_memory(user_id)
-    
-    # Create the payload for summarization
-    payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": f"{summary_prompt}\n\n{chat_text}"}]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 200,
-            "topP": 0.8,
-            "topK": 40
+        payload = {
+            "system_instruction": self._system_instruction(),
+            "contents": self._history,
+            "generationConfig": DEFAULT_GENERATION_CFG,
         }
-    }
-    
-    try:
-        # Get summary from Gemini
-        response = requests.post(URL, json=payload)
-        
-        if response.status_code == 200:
-            res_json = response.json()
-            summary = res_json["candidates"][0]["content"]["parts"][0]["text"]
-            
-            # Combine current memory with new summary
-            new_memory = f"{current_memory}\n\n{summary}"
-            
-            # Update user memory in Firestore
-            firebase_config.update_user_memory(user_id, new_memory)
-            
-            return True
-        else:
-            print(f"Failed to get summary: {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"Error summarizing chat: {str(e)}")
-        return False
 
-# Start the chat loop (only run this in CLI mode)
-if __name__ == "__main__":
-    chat_history = []
-    print("🐾 Neko the Cat is here! Type 'exit' to leave the chat.")
-    
-    # For CLI testing, use a default user ID
-    test_user_id = "test_user"
-    
-    # Get user memory
-    user_memory = firebase_config.get_user_memory(test_user_id)
-    
-    # Create system instruction with user memory
-    system_instruction = SYSTEM_INSTRUCTION_TEMPLATE.copy()
-    system_instruction["parts"][0]["text"] = system_instruction["parts"][0]["text"].format(user_memory=user_memory)
-    
+        reply = self._post(payload)
+        self._append("model", reply)
+        return reply
+
+    def summarize(self) -> bool:
+        """Summarise the conversation and persist it to Firestore."""
+        if not self.user_id or not self._history:
+            return False
+
+        chat_text = "\n".join(
+            f"{'User' if m['role']=='user' else 'Neko'}: {m['parts'][0]['text']}" for m in self._history
+        )
+
+        summary_prompt = (
+            "Please summarize the following conversation in a concise way that "
+            "captures the key points and user preferences:\n\n" + chat_text
+        )
+
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": summary_prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 200,
+                "topP": 0.8,
+                "topK": 40,
+            },
+        }
+
+        try:
+            summary = self._post(payload)
+            current_memory = firebase_config.get_user_memory(self.user_id)
+            firebase_config.update_user_memory(self.user_id, f"{current_memory}\n\n{summary}")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            print(f"[GeminiChat] summarization failed: {exc}")
+            return False
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _system_instruction(self) -> Dict[str, Any]:
+        memory = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
+        return {"parts": [{"text": _SYSTEM_TEMPLATE.format(user_memory=memory)}]}
+
+    def _post(self, payload: Dict[str, Any]) -> str:
+        """POST helper that returns the raw text reply or raises."""
+        resp = self._http.post(GEMINI_URL, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+    def _append(self, role: str, text: str) -> None:
+        self._history.append({"role": role, "parts": [{"text": text}]})
+
+
+# ---------------------------------------------------------------------------
+# Optional CLI driver (handy for local testing)
+# ---------------------------------------------------------------------------
+
+def _cli() -> None:  # pragma: no cover
+    import readline  # noqa: WPS433 (interactive use)
+
+    print("🐾  Neko the Cat is here!  (type 'exit' to quit)\n")
+    user_id = "test_user"
+    chat = GeminiChat(user_id=user_id)
+
     while True:
         user_input = input("You: ")
         if user_input.lower() == "exit":
-            # Summarize chat before exiting
-            summarize_chat(test_user_id)
+            chat.summarize()
             break
+        print(f"Neko: {chat.send(user_input)}")
 
-        # Append user message to chat history
-        chat_history.append({
-            "role": "user",
-            "parts": [{"text": user_input}]
-        })
 
-        # Build the payload with generation config
-        payload = {
-            "system_instruction": system_instruction,
-            "contents": chat_history,
-            "generationConfig": generation_config
-        }
-
-        response = requests.post(URL, json=payload)
-
-        if response.status_code == 200:
-            try:
-                res_json = response.json()
-                ai_response = res_json["candidates"][0]["content"]["parts"][0]["text"]
-                print(f"Neko: {ai_response}")
-
-                # Append model reply to chat history
-                chat_history.append({
-                    "role": "model",
-                    "parts": [{"text": ai_response}]
-                })
-
-            except Exception as e:
-                print("⚠️ Error parsing response:", e)
-        else:
-            print("❌ Request failed with status code:", response.status_code)
-            print(response.text)
+if __name__ == "__main__":  # pragma: no cover
+    _cli()
