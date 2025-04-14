@@ -14,21 +14,21 @@ API_KEY: str | None = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("Environment variable GEMINI_API_KEY is not set")
 
-MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
 )
 
 DEFAULT_GENERATION_CFG: Dict[str, Any] = {
     "stopSequences": [],
-    "temperature": 1.0,
-    "maxOutputTokens": 100,
-    "topP": 0.95,
-    "topK": 10,
+    "temperature": 1.2,
+    "maxOutputTokens": 250,
+    "topP": 0.9,
+    "topK": 40,
 }
 
 _SYSTEM_TEMPLATE: str = (
-    "You are a cat. Your name is Neko. You respond like a cute but sarcastic cat. "
+    "Your name is Nom. You are a friendly AI companion. "
     "Here is what you know about the user: {user_memory}"
 )
 
@@ -71,7 +71,7 @@ class GeminiChat:
             return False
 
         chat_text = "\n".join(
-            f"{'User' if m['role']=='user' else 'Neko'}: {m['parts'][0]['text']}" for m in self._history
+            f"{'User' if m['role']=='user' else 'Nom'}: {m['parts'][0]['text']}" for m in self._history
         )
 
         current_memory = firebase_config.get_user_memory(self.user_id)
@@ -89,9 +89,9 @@ class GeminiChat:
         payload = {
             "contents": [{"role": "user", "parts": [{"text": memory_update_prompt}]}],
             "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 300,
-                "topP": 0.8,
+                "temperature": 1.0,
+                "maxOutputTokens": 1000,
+                "topP": 0.9,
                 "topK": 40,
             },
         }
@@ -129,7 +129,7 @@ class GeminiChat:
 def _cli() -> None:  # pragma: no cover
     import readline  # noqa: WPS433 (interactive use)
 
-    print("🐾  Neko the Cat is here!  (type 'exit' to quit)\n")
+    print("Nom is here!  (type 'exit' to quit)\n")
     user_id = "test_user"
     chat = GeminiChat(user_id=user_id)
 
@@ -138,7 +138,7 @@ def _cli() -> None:  # pragma: no cover
         if user_input.lower() == "exit":
             chat.summarize()
             break
-        print(f"Neko: {chat.send(user_input)}")
+        print(f"Nom: {chat.send(user_input)}")
 
 
 if __name__ == "__main__":  # pragma: no cover
