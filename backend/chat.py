@@ -70,7 +70,7 @@ class GeminiChat:
         return reply
 
     def summarize(self) -> bool:
-        """Summarise the conversation and persist it to Firestore."""
+        """Summarise the conversation and update user memory in Firestore."""
         if not self.user_id or not self._history:
             return False
 
@@ -78,28 +78,34 @@ class GeminiChat:
             f"{'User' if m['role']=='user' else 'Neko'}: {m['parts'][0]['text']}" for m in self._history
         )
 
-        summary_prompt = (
-            "Please summarize the following conversation in a concise way that "
-            "captures the key points and user preferences:\n\n" + chat_text
+        current_memory = firebase_config.get_user_memory(self.user_id)
+        
+        memory_update_prompt = (
+            f"Here is what we currently know about the user:\n{current_memory}\n\n"
+            f"Now, here is a new conversation with the user:\n{chat_text}\n\n"
+            "Based on both the existing information and this new conversation, "
+            "create an updated, comprehensive memory about the user. "
+            "Retain important previous information, integrate new insights, "
+            "and resolve any contradictions. Format this as a concise list "
+            "of facts and preferences about the user."
         )
 
         payload = {
-            "contents": [{"role": "user", "parts": [{"text": summary_prompt}]}],
+            "contents": [{"role": "user", "parts": [{"text": memory_update_prompt}]}],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 200,
+                "maxOutputTokens": 300,
                 "topP": 0.8,
                 "topK": 40,
             },
         }
 
         try:
-            summary = self._post(payload)
-            current_memory = firebase_config.get_user_memory(self.user_id)
-            firebase_config.update_user_memory(self.user_id, f"{current_memory}\n\n{summary}")
+            updated_memory = self._post(payload)
+            firebase_config.update_user_memory(self.user_id, updated_memory)
             return True
         except Exception as exc:  # noqa: BLE001
-            print(f"[GeminiChat] summarization failed: {exc}")
+            print(f"[GeminiChat] memory update failed: {exc}")
             return False
 
     # ------------------------------------------------------------------
