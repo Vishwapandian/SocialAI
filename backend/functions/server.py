@@ -1,0 +1,116 @@
+from __future__ import annotations
+import json
+import uuid
+from typing import Dict
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from chat import GeminiChat
+import user_tracking
+
+# ---------------------------------------------------------------------------
+# Flask setup
+# ---------------------------------------------------------------------------
+app = Flask(__name__)
+app.secret_key = "jom_chat_secret_key"  # noqa: S105 (demo‑only)
+CORS(app, supports_credentials=True)
+
+# ---------------------------------------------------------------------------
+# In‑memory session store (for demo / single‑instance deployments)
+# ---------------------------------------------------------------------------
+_chat_sessions: Dict[str, GeminiChat] = {}
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+@app.post("/api/chat")
+def chat_endpoint():
+    data = request.get_json(silent=True) or {}
+    user_message: str = data.get("message", "").strip()
+    session_id: str | None = data.get("sessionId")
+    user_id: str | None = data.get("userId")
+
+    if not user_message:
+        return jsonify({"error": "No message provided"}), 400
+
+    # Bootstrap session
+    if not session_id or session_id not in _chat_sessions:
+        session_id = str(uuid.uuid4())
+        _chat_sessions[session_id] = GeminiChat(user_id=user_id)
+        # Start tracking when a new session begins
+        if user_id:
+            user_tracking.start_tracking(user_id, session_id)
+
+    chat = _chat_sessions[session_id]
+    # Track user message
+    if user_id:
+        user_tracking.add_message(session_id, "user", user_message)
+    
+    reply = chat.send(user_message)
+    
+    # Track model reply
+    if user_id:
+        user_tracking.add_message(session_id, "model", reply)
+
+    return jsonify({"response": reply, "sessionId": session_id})
+
+
+@app.post("/api/end-chat")
+def end_chat_endpoint():
+    # Handle fetch/beacon JSON or raw‑body
+    payload = request.get_json(silent=True) or json.loads(request.data or "{}")
+    session_id: str | None = payload.get("sessionId")
+    user_id: str | None = payload.get("userId")
+    survey_data: Dict = payload.get("surveyData", {})
+
+    if not session_id or session_id not in _chat_sessions:
+        return jsonify({"error": "Invalid session ID"}), 400
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+
+    # Save survey data if provided
+    if survey_data:
+        user_tracking.record_survey(session_id, survey_data)
+    
+    chat = _chat_sessions.pop(session_id)
+    
+    # First summarize the chat to update the user memory
+    memory_saved = chat.summarize()
+    
+    # Get the updated memory and update it in the tracker
+    if memory_saved and user_id:
+        from firebase_config import get_user_memory
+        updated_memory = get_user_memory(user_id)
+        user_tracking.update_memory(session_id, updated_memory)
+    
+    # Now end tracking and save all data
+    tracking_saved = user_tracking.end_tracking(session_id)
+
+    return jsonify({
+        "success": memory_saved and tracking_saved, 
+        "message": "Chat ended successfully",
+        "tracking_saved": tracking_saved
+    })
+
+
+@app.post("/api/survey")
+def save_survey():
+    data = request.get_json(silent=True) or {}
+    session_id: str | None = data.get("sessionId")
+    user_id: str | None = data.get("userId")
+    survey_data: Dict = data.get("surveyData", {})
+    
+    if not session_id:
+        return jsonify({"error": "Session ID is required"}), 400
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    if not survey_data:
+        return jsonify({"error": "Survey data is required"}), 400
+        
+    # Record survey data
+    user_tracking.record_survey(session_id, survey_data)
+    
+    return jsonify({"success": True, "message": "Survey data saved"})
+
+
+if __name__ == "__main__":  # pragma: no cover
+    app.run(debug=True, port=5000)

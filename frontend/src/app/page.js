@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ProtectedRoute from '../components/ProtectedRoute';
+import { API_ENDPOINTS } from '../config/api';
 
 export default function Home() {
   const [messages, setMessages] = useState([
@@ -22,41 +23,11 @@ export default function Home() {
     scrollToBottom();
   }, [messages]);
 
-  // Handle cleanup when component unmounts
-  useEffect(() => {
-    return () => {
-      // End chat session when component unmounts
-      if (sessionId && user?.uid) {
-        endChatSession();
-      }
-    };
-  }, [sessionId, user]);
-
-  // Add event listener for page unload (refresh or close)
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (sessionId && user?.uid) {
-        // Use sendBeacon for more reliable delivery during page unload
-        const data = JSON.stringify({ 
-          sessionId: sessionId,
-          userId: user.uid
-        });
-        navigator.sendBeacon('http://localhost:5000/api/end-chat', data);
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [sessionId, user]);
-
-  const endChatSession = async () => {
+  const endChatSession = useCallback(async () => {
     if (!sessionId || !user?.uid) return;
     
     try {
-      await fetch('http://localhost:5000/api/end-chat', {
+      const response = await fetch(API_ENDPOINTS.END_CHAT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -67,10 +38,47 @@ export default function Home() {
         }),
         credentials: 'include'
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to end chat session');
+      }
+
+      // Clear session ID after successful end
+      setSessionId(null);
     } catch (error) {
       console.error('Error ending chat session:', error);
     }
-  };
+  }, [sessionId, user]);
+
+  // Handle cleanup when component unmounts
+  useEffect(() => {
+    return () => {
+      // End chat session when component unmounts
+      if (sessionId && user?.uid) {
+        endChatSession();
+      }
+    };
+  }, [sessionId, user, endChatSession]);
+
+  // Add event listener for page unload (refresh or close)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (sessionId && user?.uid) {
+        // Use sendBeacon for more reliable delivery during page unload
+        const data = JSON.stringify({ 
+          sessionId: sessionId,
+          userId: user.uid
+        });
+        navigator.sendBeacon(API_ENDPOINTS.END_CHAT, data);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [sessionId, user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -82,7 +90,7 @@ export default function Home() {
     setIsLoading(true);
     
     try {
-      const response = await fetch('http://localhost:5000/api/chat', {
+      const response = await fetch(API_ENDPOINTS.CHAT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,15 +98,20 @@ export default function Home() {
         body: JSON.stringify({ 
           message: input,
           sessionId: sessionId,
-          userId: user?.uid // Include user ID in the request
+          userId: user?.uid,
+          email: user?.email // Add email to help with user identification
         }),
         credentials: 'include'
       });
       
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
       const data = await response.json();
       
-      // Save the session ID
-      if (data.sessionId) {
+      // Save the session ID if it's new
+      if (data.sessionId && !sessionId) {
         setSessionId(data.sessionId);
       }
       
