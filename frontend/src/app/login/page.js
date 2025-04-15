@@ -47,7 +47,7 @@ export default function Login() {
       <div className="w-full max-w-md p-8 space-y-8 bg-white/10 rounded-xl shadow-lg">
         <div className="text-center">
           <h1 className="text-3xl font-bold">Login</h1>
-          <p className="mt-2 text-gray-300">Sign in to chat with Neko</p>
+          <p className="mt-2 text-gray-300">Sign in to chat with Jom</p>
         </div>
 
         {error && (
