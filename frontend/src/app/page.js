@@ -7,7 +7,6 @@ import { API_ENDPOINTS } from '../config/api';
 
 export default function Home() {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hello! I\'m Jom The Cat. Ask me anything! Meow~' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -140,7 +139,6 @@ export default function Home() {
       // Clear chat history when logging out
       setSessionId(null);
       setMessages([
-        { role: 'assistant', content: 'Hello! I\'m Jom the cat. Ask me anything! Meow~' }
       ]);
     } catch (error) {
       console.error('Failed to log out:', error);
@@ -152,7 +150,7 @@ export default function Home() {
       <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-24 bg-gradient-to-b from-gray-900 to-gray-800">
         <div className="z-10 w-full max-w-3xl">
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-4xl font-bold text-center">Chat with Jom</h1>
+            <h1 className="text-4xl font-bold text-center">Chat with Puck</h1>
             <button 
               onClick={handleLogout}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white"
@@ -181,7 +179,7 @@ export default function Home() {
                   {message.content}
                 </div>
                 <div className="text-xs mt-1 text-gray-400">
-                  {message.role === 'user' ? user?.email || 'You' : 'Jom'}
+                  {message.role === 'user' ? user?.email || 'You' : 'Puck'}
                 </div>
               </div>
             ))}
@@ -194,7 +192,7 @@ export default function Home() {
                     <div className="h-2 w-2 bg-gray-500 rounded-full animate-bounce delay-150"></div>
                   </div>
                 </div>
-                <div className="text-xs mt-1 text-gray-400">Jom</div>
+                <div className="text-xs mt-1 text-gray-400">Puck</div>
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -205,7 +203,7 @@ export default function Home() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask Jom something..."
+              placeholder="Ask Puck something..."
               className="flex-1 p-2 rounded-lg bg-white/10 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isLoading}
             />

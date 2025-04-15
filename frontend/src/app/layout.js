@@ -2,8 +2,8 @@ import "./globals.css";
 import { AuthProvider } from "../contexts/AuthContext";
 
 export const metadata = {
-  title: "Chat with Jom",
-  description: "Chat with a cute but sarcastic cat AI",
+  title: "Chat with Puck",
+  description: "Puck Puck Puck",
 };
 
 export default function RootLayout({ children }) {
