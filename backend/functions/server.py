@@ -11,7 +11,7 @@ import user_tracking
 # Flask setup
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
-app.secret_key = "jom_chat_secret_key"  # noqa: S105 (demo‑only)
+app.secret_key = "puck_chat_secret_key"  # noqa: S105 (demo‑only)
 CORS(app, supports_credentials=True)
 
 # ---------------------------------------------------------------------------

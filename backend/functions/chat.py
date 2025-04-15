@@ -28,7 +28,7 @@ DEFAULT_GENERATION_CFG: Dict[str, Any] = {
 }
 
 _SYSTEM_TEMPLATE: str = (
-    "Your name is Jom. You are a friendly AI companion. "
+    "Your name is Puck. You are a friendly AI companion. "
     "Here is what you know about the user: {user_memory}"
 )
 
@@ -72,7 +72,7 @@ class GeminiChat:
             return False
 
         chat_text = "\n".join(
-            f"{'User' if m['role']=='user' else 'Jom'}: {m['parts'][0]['text']}" for m in self._history
+            f"{'User' if m['role']=='user' else 'Puck'}: {m['parts'][0]['text']}" for m in self._history
         )
 
         current_memory = firebase_config.get_user_memory(self.user_id)
@@ -130,7 +130,7 @@ class GeminiChat:
 def _cli() -> None:  # pragma: no cover
     import readline  # noqa: WPS433 (interactive use)
 
-    print("Jom is here!  (type 'exit' to quit)\n")
+    print("Puck is here!  (type 'exit' to quit)\n")
     user_id = "test_user"
     chat = GeminiChat(user_id=user_id)
 
@@ -139,7 +139,7 @@ def _cli() -> None:  # pragma: no cover
         if user_input.lower() == "exit":
             chat.summarize()
             break
-        print(f"Jom: {chat.send(user_input)}")
+        print(f"Puck: {chat.send(user_input)}")
 
 
 if __name__ == "__main__":  # pragma: no cover
