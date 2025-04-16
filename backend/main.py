@@ -1,21 +1,14 @@
-import firebase_functions
-from server import app
-from chat import chat_bp
-from user_tracking import user_tracking_bp
-from export_user_data import export_user_data_bp
+"""
+Entry point for Cloud Functions (2nd gen) that simply forwards every
+request to the Flask app defined in server.py.
+"""
 
-# Register blueprints
-app.register_blueprint(chat_bp)
-app.register_blueprint(user_tracking_bp)
-app.register_blueprint(export_user_data_bp)
+from firebase_functions import https_fn          # ✅  import the sub‑module
+from server import app                           #  your existing Flask app
 
-@firebase_functions.https_fn.on_request()
-def social_ai_backend(req: firebase_functions.Request) -> firebase_functions.Response:
-    """HTTP Cloud Function.
-    Args:
-        req: The request object.
-    Returns:
-        The response object.
-    """
+@https_fn.on_request()                           # decorator from the sub‑module
+def social_ai_backend(req: https_fn.Request) -> https_fn.Response:
+    """HTTP wrapper around the Flask app."""
+    # Re‑use Flask’s request machinery so blueprints etc. keep working.
     with app.request_context(req.environ):
-        return app.full_dispatch_request() 
+        return app.full_dispatch_request()       # already a Flask Response

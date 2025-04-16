@@ -9,9 +9,9 @@ from firebase_admin import credentials, firestore
 # Initialise Firebase
 # ---------------------------------------------------------------------------
 load_dotenv()
-_SERVICE_ACCOUNT: Final[str | None] = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
+_SERVICE_ACCOUNT: Final[str | None] = os.getenv("SERVICE_ACCOUNT_PATH")
 if not _SERVICE_ACCOUNT:
-    raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_PATH is not set")
+    raise RuntimeError("SERVICE_ACCOUNT_PATH is not set")
 
 cred = credentials.Certificate(_SERVICE_ACCOUNT)
 firebase_admin.initialize_app(cred)

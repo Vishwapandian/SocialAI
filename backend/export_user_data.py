@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 # Load environment variables and Firebase config
 load_dotenv()
-SERVICE_ACCOUNT_PATH = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
+SERVICE_ACCOUNT_PATH = os.getenv("SERVICE_ACCOUNT_PATH")
 EXPORT_DIR = os.path.join(os.path.dirname(__file__), "../data_exports")
 
 def ensure_export_dir(directory: str = EXPORT_DIR) -> None:
@@ -32,7 +32,7 @@ def initialize_firebase() -> firestore.Client:
     except ValueError:
         # Initialize app if not already done
         if not SERVICE_ACCOUNT_PATH:
-            raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_PATH environment variable not set")
+            raise RuntimeError("SERVICE_ACCOUNT_PATH environment variable not set")
         cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
         app = firebase_admin.initialize_app(cred)
     
