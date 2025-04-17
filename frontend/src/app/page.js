@@ -120,7 +120,7 @@ export default function Home() {
       console.error('Error:', error);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Meow~ I seem to be having trouble connecting. Try again later?' 
+        content: 'Oops... I seem to be having trouble connecting. Try again later?' 
       }]);
     } finally {
       setIsLoading(false);

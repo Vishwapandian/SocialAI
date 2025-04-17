@@ -2,7 +2,7 @@ import "./globals.css";
 import { AuthProvider } from "../contexts/AuthContext";
 
 export const metadata = {
-  title: "Chat with Puck",
+  title: "Hey Puck",
   description: "Puck Puck Puck",
 };
 
