@@ -51,6 +51,10 @@ User’s flaws:
 (write down any private information that may help Puck have better conversations...)
 """
 
+_DEFAULT_CENTRAL_MEMORY: Final[str] = """
+Puck's Central Memory:
+"""
+
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
@@ -72,3 +76,26 @@ def update_user_memory(user_id: str, new_memory: str) -> None:
     _db.collection("users").document(user_id).update(
         {"memory": new_memory, "updated_at": firestore.SERVER_TIMESTAMP}
     )
+
+
+def get_central_memory() -> str:
+    """Return the central memory for Puck, creating a stub record if necessary."""
+    doc_ref = _db.collection("assistant").document("central_memory")
+    snapshot = doc_ref.get()
+    if not snapshot.exists:
+        doc_ref.set({"memory": _DEFAULT_CENTRAL_MEMORY, "created_at": firestore.SERVER_TIMESTAMP})
+        return _DEFAULT_CENTRAL_MEMORY
+    data = snapshot.to_dict()
+    return data.get("memory", _DEFAULT_CENTRAL_MEMORY)
+
+
+def update_central_memory(new_memory: str) -> None:
+    """Append *new_memory* to the central memory for Puck."""
+    doc_ref = _db.collection("assistant").document("central_memory")
+    snapshot = doc_ref.get()
+    if not snapshot.exists:
+        current = _DEFAULT_CENTRAL_MEMORY
+    else:
+        current = snapshot.to_dict().get("memory", _DEFAULT_CENTRAL_MEMORY)
+    updated = f"{current}\n\n{new_memory}"
+    doc_ref.update({"memory": updated, "updated_at": firestore.SERVER_TIMESTAMP})
