@@ -12,7 +12,11 @@ import user_tracking
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
 app.secret_key = "puck_chat_secret_key"  # noqa: S105 (demo‑only)
-CORS(app, supports_credentials=True)
+CORS(
+    app,
+    resources={r"/api/*": {"origins": ["https://heypuck.com"]}},
+    supports_credentials=True
+)
 
 # ---------------------------------------------------------------------------
 # In‑memory session store (for demo / single‑instance deployments)

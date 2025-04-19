@@ -17,7 +17,39 @@ cred = credentials.Certificate(_SERVICE_ACCOUNT)
 firebase_admin.initialize_app(cred)
 
 _db = firestore.client()
-_DEFAULT_MEMORY: Final[str] = "ask user for their name"
+_DEFAULT_MEMORY: Final[str] = """
+General Information
+
+Name: unknown (make sure to ask)
+
+Age: unknown (maybe ask for user’s birthday, astrology, etc…)
+
+Hobbies: unknown
+
+Favorite media: unknown (maybe ask for user’s favorite music, films, books, etc…)
+
+Last conversation: never
+
+(just learn about the user...)
+
+
+Temporal Information
+
+(input past, present, or future time dependent information...)
+
+
+Private Information
+
+Social Dynamic: (what is the dynamic between Puck and this user)
+
+User’s MBTI personality:
+
+User’s strengths:
+
+User’s flaws:
+
+(write down any private information that may help Puck have better conversations...)
+"""
 
 # ---------------------------------------------------------------------------
 # Public helpers
