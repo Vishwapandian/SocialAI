@@ -28,9 +28,13 @@ DEFAULT_GENERATION_CFG: Dict[str, Any] = {
 }
 
 _SYSTEM_TEMPLATE: str = """
-Here is what you know about yourself: {central_memory}
+My name is Puck!
 
-Here is what you know about this person: {user_memory}
+I am a Social AI designed solely for the purpose of engaging in human conversation and building genuine connections with users.
+
+This is what I currently know about myself: {central_memory}
+
+This is what I currently know about the user I am chatting with: {user_memory}
 """
 
 # ---------------------------------------------------------------------------
@@ -80,20 +84,22 @@ class GeminiChat:
         current_central_memory = firebase_config.get_central_memory()
         
         user_memory_update_prompt = f"""
-First summarize this text in half:{current_user_memory}
+You just finished another conversation with this user!
 
-Then summarize this text in half: {chat_text}
+This is the conversation transcript: {chat_text}
 
-Then concatante these two together and output the new string.
-            
-Only output the new string. No need to give an intro, outro, or explanations.
+This was your existing knowledge on the user: {current_user_memory}
+
+Overwrite and update your knowledge about the user based on this recent experience.
+
+Return only the full updated knowledge.
         """
 
         payload = {
             "contents": [{"role": "user", "parts": [{"text": user_memory_update_prompt}]}],
             "generationConfig": {
                 "temperature": 1.0,
-                "maxOutputTokens": 1000,
+                "maxOutputTokens": 5000,
                 "topP": 0.9,
                 "topK": 40,
             },
@@ -109,7 +115,7 @@ Only output the new string. No need to give an intro, outro, or explanations.
                 "contents": [{"role": "user", "parts": [{"text": central_prompt}]}],
                 "generationConfig": {
                     "temperature": 1.0,
-                    "maxOutputTokens": 1000,
+                    "maxOutputTokens": 5000,
                     "topP": 0.9,
                     "topK": 40,
                 },
@@ -124,11 +130,15 @@ Only output the new string. No need to give an intro, outro, or explanations.
     def central_memory_update_prompt(self, current_central_memory: str, chat_text: str) -> str:
         """Generate prompt for updating central memory given current central memory and chat text."""
         return f"""
-First, summarize the existing central memory in half: {current_central_memory}
+You just finished another conversation with a random user!
 
-Then, summarize the recent conversation in half: {chat_text}
+This is what you currently know about yourself: {current_central_memory}
 
-Finally, concatenate these two summaries and output ONLY the combined result as the new central memory.
+This is a conversation you just had with the random user: {chat_text}
+
+Overwrite and update your knowledge about yourself based on this recent experience.
+
+Return only the full updated knowledge.
 """
 
     # ------------------------------------------------------------------
