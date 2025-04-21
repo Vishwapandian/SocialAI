@@ -18,9 +18,7 @@ firebase_admin.initialize_app(cred)
 
 _db = firestore.client()
 _DEFAULT_MEMORY: Final[str] = """
-I have previously had 0 conversations with this user.
-
-This is my first time meeting them.
+This is my first time meeting this human.
 
 I’ll be nice, ask for their name, and make friends with them!
 """
