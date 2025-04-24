@@ -101,8 +101,9 @@ _index = _pc.Index(_PINECONE_INDEX)
 # ---------------------------------------------------------------------------
 def get_user_memory(user_id: str) -> str:
     """Return memory for *user_id*, fetching from Pinecone, creating stub record if necessary."""
-    fetch_response = _index.fetch(ids=[user_id], include_metadata=True)
-    vectors = fetch_response.get("vectors", {})
+    fetch_response = _index.fetch(ids=[user_id])
+    # Pinecone FetchResponse has a .vectors attribute (dict)
+    vectors = fetch_response.vectors if hasattr(fetch_response, 'vectors') else {}
     if user_id not in vectors:
         text = _DEFAULT_MEMORY
         # Generate embedding
@@ -112,7 +113,8 @@ def get_user_memory(user_id: str) -> str:
         metadata = {"text": text}
         _index.upsert(vectors=[(user_id, embedding, metadata)])
         return text
-    metadata = vectors[user_id].get("metadata", {})
+    vector = vectors[user_id]
+    metadata = getattr(vector, "metadata", {}) or {}
     return metadata.get("text", _DEFAULT_MEMORY)
 
 def update_user_memory(user_id: str, new_memory: str) -> None:
