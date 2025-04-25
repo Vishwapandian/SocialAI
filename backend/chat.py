@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 import requests
 from dotenv import load_dotenv
 import firebase_config
+import rag_router  # Import the new RAG router module
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -35,6 +36,8 @@ I am a Social AI designed solely for the purpose of engaging in human conversati
 This is what I currently know about myself: {central_memory}
 
 This is what I currently know about the user I am chatting with: {user_memory}
+
+{rag_context}
 """
 
 # ---------------------------------------------------------------------------
@@ -48,6 +51,7 @@ class GeminiChat:
         self.session_id = session_id
         self._history: List[Dict[str, Any]] = []
         self._http = requests.Session()
+        self._rag_used: bool = False
 
     # ---------------------------------------------------------------------
     # Public helpers
@@ -60,14 +64,29 @@ class GeminiChat:
     def send(self, message: str) -> str:
         """Send *message* to Gemini and return the model reply."""
         self._append("user", message)
-
-        payload = {
-            "system_instruction": self._system_instruction(),
-            "contents": self._history,
-            "generationConfig": DEFAULT_GENERATION_CFG,
-        }
-
-        reply = self._post(payload)
+        
+        # Check if we should use RAG for this query
+        user_memory = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
+        central_memory = firebase_config.get_central_memory()
+        
+        # Use RAG router to process the query
+        if self.user_id:
+            reply, self._rag_used = rag_router.process_query(
+                message, 
+                self.user_id, 
+                user_memory, 
+                central_memory
+            )
+        else:
+            # If no user_id, fall back to regular processing
+            payload = {
+                "system_instruction": self._system_instruction(),
+                "contents": self._history,
+                "generationConfig": DEFAULT_GENERATION_CFG,
+            }
+            reply = self._post(payload)
+            self._rag_used = False
+            
         self._append("model", reply)
         return reply
 
@@ -147,7 +166,12 @@ Return only the full updated knowledge.
     def _system_instruction(self) -> Dict[str, Any]:
         user_memory = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
         central_memory = firebase_config.get_central_memory()
-        return {"parts": [{"text": _SYSTEM_TEMPLATE.format(central_memory=central_memory, user_memory=user_memory)}]}
+        rag_context = "RAG was used to generate this response." if self._rag_used else ""
+        return {"parts": [{"text": _SYSTEM_TEMPLATE.format(
+            central_memory=central_memory, 
+            user_memory=user_memory,
+            rag_context=rag_context
+        )}]}
 
     def _post(self, payload: Dict[str, Any]) -> str:
         """POST helper that returns the raw text reply or raises."""
@@ -176,7 +200,9 @@ def _cli() -> None:  # pragma: no cover
         if user_input.lower() == "exit":
             chat.summarize()
             break
-        print(f"Puck: {chat.send(user_input)}")
+        response = chat.send(user_input)
+        rag_indicator = " [RAG]" if chat._rag_used else ""
+        print(f"Puck{rag_indicator}: {response}")
 
 
 if __name__ == "__main__":  # pragma: no cover
