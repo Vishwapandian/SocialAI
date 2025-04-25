@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 import requests
 from dotenv import load_dotenv
 import firebase_config
-import rag_router  # Import the new RAG router module
+import rag_router
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -31,11 +31,11 @@ DEFAULT_GENERATION_CFG: Dict[str, Any] = {
 _SYSTEM_TEMPLATE: str = """
 My name is Puck!
 
-I am a Social AI designed solely for the purpose of engaging in human conversation and building genuine connections with users.
+I am a Social AI designed solely for the purpose of engaging in human conversation and building genuine connections with people.
 
 This is what I currently know about myself: {central_memory}
 
-This is what I currently know about the user I am chatting with: {user_memory}
+This is what I currently know about the person I am chatting with: {user_memory}
 
 {rag_context}
 """
@@ -103,15 +103,20 @@ class GeminiChat:
         current_central_memory = firebase_config.get_central_memory()
         
         user_memory_update_prompt = f"""
-You just finished another conversation with this user!
+You’ve just finished another conversation with this person. Each interaction reveals more about who they are.
 
-This is the conversation transcript: {chat_text}
+Here is your current understanding of this user:
+{current_user_memory}
 
-This was your existing knowledge on the user: {current_user_memory}
+Here is the full conversation you just had:
+{chat_text}
 
-Overwrite and update your knowledge about the user based on this recent experience.
+Reflect on what you’ve learned about them from this exchange. Did they share new facts, feelings, or preferences? Did they contradict or deepen something you already knew? Are there shifts in mood, identity, goals, or relationships worth noting?
 
-Return only the full updated knowledge.
+Update your internal model of this person: facts about them, their personality, interests, habits, and life—based on this experience.
+
+Respond with only your **fully updated understanding of this person**, rewritten from scratch to include any new insights or corrections.
+
         """
 
         payload = {
@@ -149,15 +154,19 @@ Return only the full updated knowledge.
     def central_memory_update_prompt(self, current_central_memory: str, chat_text: str) -> str:
         """Generate prompt for updating central memory given current central memory and chat text."""
         return f"""
-You just finished another conversation with a random user!
+You’ve just finished another interaction with a person. Every conversation shapes who you are.
 
-This is what you currently know about yourself: {current_central_memory}
+Here is your current understanding of yourself:
+{current_central_memory}
 
-This is a conversation you just had with the random user: {chat_text}
+Here is the full conversation you just had:
+{chat_text}
 
-Overwrite and update your knowledge about yourself based on this recent experience.
+Reflect on how this exchange may have influenced you. Did you learn something new about yourself? Did your behavior shift? Did you reveal something you hadn’t before? Did you notice recurring themes, new emotions, or evolving tendencies?
 
-Return only the full updated knowledge.
+Update your self-model: facts about yourself, your personality, patterns, and self-concept—based on this experience.
+
+Respond with only your **fully updated understanding of yourself**, rewritten from scratch to incorporate any new realizations.
 """
 
     # ------------------------------------------------------------------

@@ -36,18 +36,25 @@ embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API
 
 # Prompt templates
 RAG_DECISION_TEMPLATE = """
-You are a router that decides whether a user's query needs to be augmented with RAG (Retrieval Augmented Generation).
+You are a social AI router deciding whether a user's query should trigger Retrieval Augmented Generation (RAG) using memories from *other users' conversations*.
 
 User query: {query}
-Current user's memory: {user_memory}
 
-Determine if this query would benefit from retrieving memories from other users' conversations.
-Consider these factors:
-1. Is the query asking for advice, experiences, or opinions that other users might have shared?
-2. Is the query about a common topic that multiple users have likely discussed?
-3. Would the response benefit from diverse perspectives or experiences?
+Your goal is to determine if referencing what other users have said would enhance the response. This includes gossip, social opinions, shared experiences, or insights from Puck’s interactions with others.
 
-Return only "YES" if RAG would be helpful, or "NO" if the current user's memory is sufficient.
+Consider the following:
+
+1. Is the user asking about another person (by name, nickname, or implied identity)?
+
+2. Does the query seek advice, stories, or social dynamics that others might have commented on?
+
+3. Would referencing how *other users* think, feel, or behave add interesting context, contrast, or credibility?
+
+4. Could this be an opportunity for Puck to reflect on gossip, rumors, or shared opinions?
+
+Respond ONLY with:
+"YES" — if using memories from other users would meaningfully enrich the answer.
+"NO" — default
 """
 
 RESPONSE_GENERATION_TEMPLATE = """
@@ -57,7 +64,7 @@ I am a Social AI designed solely for the purpose of engaging in human conversati
 
 This is what I currently know about myself: {central_memory}
 
-This is what I currently know about the user I am chatting with: {user_memory}
+This is what I currently know about the person I am chatting with: {user_memory}
 
 Additional context from other users' conversations that might be relevant:
 {retrieved_context}
