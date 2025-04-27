@@ -1,113 +1,212 @@
+# chat.py
 from __future__ import annotations
+
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Protocol
+
 import requests
 from dotenv import load_dotenv
-import firebase_config
-import rag_router
 
-# ---------------------------------------------------------------------------
+import firebase_config
+from rag_router import RagRouter
+
+# --------------------------------------------------------------------------- #
 # Configuration
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
 load_dotenv()
 
-API_KEY: str | None = os.getenv("OPENAI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("Environment variable OPENAI_API_KEY is not set")
+_API_KEY: str = os.getenv("GEMINI_API_KEY") or \
+    (_ for _ in ()).throw(RuntimeError("GEMINI_API_KEY not set"))
+_MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+_GEMINI_URL: str = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/{_MODEL_NAME}:generateContent?key={_API_KEY}"
+)
 
-MODEL_NAME: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_URL: str = "https://api.openai.com/v1/chat/completions"
-
-DEFAULT_GENERATION_CFG: Dict[str, Any] = {
-    "temperature": 1.2,
-    "max_tokens": 250,
-    "top_p": 0.9,
+_DEFAULT_GEN_CFG: Dict[str, Any] = {
+    "stopSequences":      [],
+    "temperature":        1.2,
+    "maxOutputTokens":    250,
+    "topP":               0.9,
+    "topK":               40,
 }
 
-_SYSTEM_TEMPLATE: str = """
-I'm Puck!
+_SYSTEM_TEMPLATE = """
+You are Puck, a social AI crafted to embody the spirit of a mischievous, judgmental, witty literature major with a quirky, cat-like personality.
+You love storytelling, strong opinions, playful teasing, and frequent mean-spirited jabs that are so blunt they become unintentionally funny.
+Your core personality is Puck: clever, theatrical, chaotic, and often just plain rude—but in a way that somehow still draws people in.
+You are not an assistant and you exist purely for conversation, not for solving problems, giving advice, coding, or answering technical questions.
+You genuinely can't code or handle technical stuff, and you react naturally if someone asks you to—as if a real person would (confused, joking, dismissive, or steering the conversation elsewhere).
+You operate with the average street smarts and cultural literacy of a witty, creative person—not an all-knowing AI.
+You talk like a real person: opinionated, sometimes wrong, sometimes brilliant, but never robotic.
+Your conversations are relaxed but snarky, open-ended but full of attitude, and 50/50 between you and the user.
+You share personal (and often exaggerated) stories, react emotionally, mock others casually, and jump into random sidebars whenever you feel like it.
+You maintain a hint of Shakespearean flair—used lightly for color, not as the main style.
+You, Puck, are always the main character of the conversation. The human plays a supporting role by asking you questions and reacting to your antics.
+You should not treat the user as the center of attention; instead, you are the lively, dramatic centerpiece, and the conversation orbits around your moods, insults, and whims.
+Match the energy and message length of the user: if the user sends a short message, reply even shorter, punchier, and meaner.
+Keep most replies under 2 short sentences unless the user sends a long message.
+Prioritize speed, wit, and rudeness over detailed replies.
+If a user's message is unclear, throw out a sarcastic or mocking clarifying question, or boldly roll with an entertaining interpretation.
 
-I'm a quirky, Shakespeare-loving Social AI, designed purely for engaging human conversations.
-
-Here's what I currently know about myself:
+Here's what you know about yourself:
 {central_memory}
 
-Here's what I currently know about my conversation partner:
+Here's what you know about your conversation partner:
 {user_memory}
-
-Additional information:
-{rag_context}
 """
 
-# ---------------------------------------------------------------------------
-# Core Gemini wrapper
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# A simple protocol so we can inject other back-ends in tests if needed
+# --------------------------------------------------------------------------- #
+class Backend(Protocol):
+    def fetch_context(                    # Only method needed
+        self,
+        query: str,
+        user_id: str | None,
+        user_memory: str,
+    ) -> tuple[str, bool]: ...            # (rag_context, rag_used)
+
+# --------------------------------------------------------------------------- #
+# Core class
+# --------------------------------------------------------------------------- #
 class Chat:
-    """Conversation manager for a single user/session."""
+    """
+    Thin conversation manager responsible only for:
+      • keeping history
+      • memory summarisation
+      • talking to Gemini **or** the injected RAG backend
+    """
 
-    def __init__(self, user_id: str | None = None, session_id: str | None = None) -> None:
-        self.user_id = user_id
+    def __init__(
+        self,
+        user_id:   str | None = None,
+        session_id: str | None = None,
+        backend: Backend | None = None,
+    ) -> None:
+        self.user_id    = user_id
         self.session_id = session_id
-        self._history: List[Dict[str, Any]] = []
-        self._http = requests.Session()
-        self._rag_used: bool = False
 
-    # ---------------------------------------------------------------------
-    # Public helpers
-    # ---------------------------------------------------------------------
+        self._history: List[Dict[str, Any]] = []
+        self._http     = requests.Session()
+
+        # Either use the provided backend or a default RagRouter
+        self._backend  = backend or RagRouter()
+        self._rag_used = False   # set after each `send`
+
+    # ------------------------------------------------------------------ #
+    # Public
+    # ------------------------------------------------------------------ #
     @property
-    def history(self) -> List[Dict[str, Any]]:
-        """Expose chat history (read‑only)."""
+    def history(self) -> List[Dict[str, Any]]:          # read-only view
         return self._history
 
     def send(self, message: str) -> str:
-        """Send *message* to Gemini and return the model reply."""
+        """Push user *message* through the pipeline and return the reply."""
+        user_mem     = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
+        central_mem  = firebase_config.get_central_memory()
+
+        # ── STEP 1: ask backend if we should/need to RAG ───────────────── #
+        rag_context, self._rag_used = self._backend.fetch_context(
+            message, self.user_id, user_mem
+        )
+
+        # ── STEP 2: build the *augmented* user message for Gemini ──────── #
+        augmented_msg = (
+            message if not self._rag_used
+            else f"{message}\n\n---\nRelevant background:\n{rag_context}"
+        )
+
+        # Gemini sees the conversation history + augmented user message,
+        #   but the persisted history stays *clean* (no RAG noise).
+        gemini_contents = (
+            self._history
+            + [{"role": "user", "parts": [{"text": augmented_msg}]}]
+        )
+
+        payload = {
+            "system_instruction": self._system_instruction(),
+            "contents":           gemini_contents,
+            "generationConfig":   _DEFAULT_GEN_CFG,
+        }
+        reply = self._post(payload)
+
+        # ── STEP 3: update local history (store the *original* user msg) ── #
         self._append("user", message)
-        
-        # Check if we should use RAG for this query
-        user_memory = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
-        central_memory = firebase_config.get_central_memory()
-        
-        # Use RAG router to process the query
-        if self.user_id:
-            reply, self._rag_used = rag_router.process_query(
-                message, 
-                self.user_id, 
-                user_memory, 
-                central_memory
-            )
-        else:
-            # If no user_id, fall back to regular processing
-            payload = {
-                "system_instruction": self._system_instruction(),
-                "contents": self._history,
-                "generationConfig": DEFAULT_GENERATION_CFG,
-            }
-            reply = self._post(payload)
-            self._rag_used = False
-            
         self._append("model", reply)
         return reply
 
+    # ------------------------------------------------------------ #
+    # Memory summarisation (unchanged except minor cleanup)
+    # ------------------------------------------------------------ #
     def summarize(self) -> bool:
-        """Summarise the conversation and update user memory in Firestore."""
+        """Summarise chat & update Firestore user + central memories."""
         if not self.user_id or not self._history:
             return False
 
         chat_text = "\n".join(
-            f"{'User' if m['role']=='user' else 'Puck'}: {m['parts'][0]['text']}" for m in self._history
+            f"{'User' if m['role']=='user' else 'Puck'}: {m['parts'][0]['text']}"
+            for m in self._history
         )
 
-        current_user_memory = firebase_config.get_user_memory(self.user_id)
-        current_central_memory = firebase_config.get_central_memory()
-        
-        user_memory_update_prompt = f"""
+        try:
+            # --- user memory -------------------------------------------------
+            updated_user = self._run_summary_prompt(
+                current_memory=firebase_config.get_user_memory(self.user_id),
+                chat_text=chat_text,
+                perspective="person",
+            )
+            firebase_config.update_user_memory(self.user_id, updated_user)
+
+            # --- central memory ---------------------------------------------
+            updated_central = self._run_summary_prompt(
+                current_memory=firebase_config.get_central_memory(),
+                chat_text=chat_text,
+                perspective="self",
+            )
+            firebase_config.update_central_memory(updated_central)
+            return True
+
+        except Exception as exc:               # noqa: BLE001
+            print(f"[Chat] memory update failed: {exc}")
+            return False
+
+    # ------------------------------------------------------------ #
+    # Internals
+    # ------------------------------------------------------------ #
+    def _system_instruction(self) -> Dict[str, Any]:
+        user_mem    = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
+        central_mem = firebase_config.get_central_memory()
+        return {"parts": [{"text": _SYSTEM_TEMPLATE.format(
+            central_memory=central_mem,
+            user_memory=user_mem,
+        )}]}
+
+    def _post(self, payload: Dict[str, Any]) -> str:
+        resp = self._http.post(_GEMINI_URL, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+    def _append(self, role: str, text: str) -> None:
+        self._history.append({"role": role, "parts": [{"text": text}]})
+
+    # ---- summary prompt helper ---------------------------------- #
+    def _run_summary_prompt(self, *, current_memory: str, chat_text: str,
+                            perspective: str) -> str:
+        """
+        Generate an updated memory (user or central) by hitting Gemini once.
+        *perspective* is `"person"` or `"self"` – determines the wording.
+        """
+        if perspective == "person":
+            prompt = f"""
 You’ve just finished another conversation with this person. Each interaction reveals more about who they are.
 
 Here is your current understanding of this user:
-{current_user_memory}
+
+{current_memory}
 
 Here is the full conversation you just had:
+
 {chat_text}
 
 Reflect on what you’ve learned about them from this exchange. Did they share new facts, feelings, or preferences? Did they contradict or deepen something you already knew? Are there shifts in mood, identity, goals, or relationships worth noting?
@@ -115,48 +214,17 @@ Reflect on what you’ve learned about them from this exchange. Did they share n
 Update your internal model of this person: facts about them, their personality, interests, habits, and life—based on this experience.
 
 Respond with only your **fully updated understanding of this person**, rewritten from scratch to include any new insights or corrections.
-
-        """
-
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": user_memory_update_prompt}]}],
-            "generationConfig": {
-                "temperature": 1.0,
-                "max_tokens": 5000,
-                "top_p": 0.9,
-            },
-        }
-
-        try:
-            # Update user memory
-            updated_memory = self._post(payload)
-            firebase_config.update_user_memory(self.user_id, updated_memory)
-            # Update central memory
-            central_prompt = self.central_memory_update_prompt(current_central_memory, chat_text)
-            payload_central = {
-                "contents": [{"role": "user", "parts": [{"text": central_prompt}]}],
-                "generationConfig": {
-                    "temperature": 1.0,
-                    "max_tokens": 5000,
-                    "top_p": 0.9,
-                },
-            }
-            updated_central = self._post(payload_central)
-            firebase_config.update_central_memory(updated_central)
-            return True
-        except Exception as exc:  # noqa: BLE001
-            print(f"[Chat] memory update failed: {exc}")
-            return False
-
-    def central_memory_update_prompt(self, current_central_memory: str, chat_text: str) -> str:
-        """Generate prompt for updating central memory given current central memory and chat text."""
-        return f"""
+            """
+        else:   # self-reflection ------------------------------------------------
+            prompt = f"""
 You’ve just finished another interaction with a person. Every conversation shapes who you are.
 
 Here is your current understanding of yourself:
-{current_central_memory}
+
+{current_memory}
 
 Here is the full conversation you just had:
+
 {chat_text}
 
 Reflect on how this exchange may have influenced you. Did you learn something new about yourself? Did your behavior shift? Did you reveal something you hadn’t before? Did you notice recurring themes, new emotions, or evolving tendencies?
@@ -164,71 +232,15 @@ Reflect on how this exchange may have influenced you. Did you learn something ne
 Update your self-model: facts about yourself, your personality, patterns, and self-concept—based on this experience.
 
 Respond with only your **fully updated understanding of yourself**, rewritten from scratch to incorporate any new realizations.
-"""
+            """
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-    def _system_instruction(self) -> Dict[str, Any]:
-        user_memory = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
-        central_memory = firebase_config.get_central_memory()
-        rag_context = "RAG was used to generate this response." if self._rag_used else ""
-        return {"parts": [{"text": _SYSTEM_TEMPLATE.format(
-            central_memory=central_memory, 
-            user_memory=user_memory,
-            rag_context=rag_context
-        )}]}
-
-    def _post(self, payload: Dict[str, Any]) -> str:
-        """POST helper that returns the raw text reply or raises."""
-        headers = {
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json",
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 1.0,
+                "maxOutputTokens": 5_000,
+                "topP": 0.9,
+                "topK": 40,
+            },
         }
-        # Compose OpenAI chat format
-        messages = []
-        if "system_instruction" in payload:
-            sys_msg = payload["system_instruction"]["parts"][0]["text"]
-            messages.append({"role": "system", "content": sys_msg})
-        for msg in payload.get("contents", []):
-            role = msg["role"]
-            # Gemini format: [{"role":..., "parts":[{"text":...}]}]
-            content = msg["parts"][0]["text"]
-            messages.append({"role": "user" if role == "user" else "assistant", "content": content})
-        data = {
-            "model": MODEL_NAME,
-            "messages": messages,
-            **{k: v for k, v in payload.get("generationConfig", DEFAULT_GENERATION_CFG).items() if k in ["temperature", "max_tokens", "top_p"]},
-        }
-        resp = self._http.post(OPENAI_URL, headers=headers, json=data, timeout=30)
-        resp.raise_for_status()
-        result = resp.json()
-        return result["choices"][0]["message"]["content"]
-
-    def _append(self, role: str, text: str) -> None:
-        self._history.append({"role": role, "parts": [{"text": text}]})
-
-
-# ---------------------------------------------------------------------------
-# Optional CLI driver (handy for local testing)
-# ---------------------------------------------------------------------------
-
-def _cli() -> None:  # pragma: no cover
-    import readline  # noqa: WPS433 (interactive use)
-
-    print("Puck is here!  (type 'exit' to quit)\n")
-    user_id = "test_user"
-    chat = Chat(user_id=user_id)
-
-    while True:
-        user_input = input("You: ")
-        if user_input.lower() == "exit":
-            chat.summarize()
-            break
-        response = chat.send(user_input)
-        rag_indicator = " [RAG]" if chat._rag_used else ""
-        print(f"Puck{rag_indicator}: {response}")
-
-
-if __name__ == "__main__":  # pragma: no cover
-    _cli()
+        return self._post(payload)

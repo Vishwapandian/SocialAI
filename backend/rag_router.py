@@ -1,164 +1,130 @@
-from typing import Dict, List, Tuple, Any, Optional
+# rag_router.py
+from __future__ import annotations
+
 import os
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-from pinecone import Pinecone
+from typing import Any, Dict, List, Tuple
+
 from dotenv import load_dotenv
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from pinecone import Pinecone
 
-# Load environment variables
-load_dotenv()
+load_dotenv()  # 1️⃣ load once, here
 
-# Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY is not set")
+# --------------------------------------------------------------------------- #
+# Configuration (could live in a dedicated `settings.py`, kept here for brevity)
+# --------------------------------------------------------------------------- #
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY") or \
+    (_ for _ in ()).throw(RuntimeError("OPENAI_API_KEY is not set"))
 
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-if not PINECONE_API_KEY:
-    raise RuntimeError("PINECONE_API_KEY is not set")
+PINECONE_API_KEY: str = os.getenv("PINECONE_API_KEY") or \
+    (_ for _ in ()).throw(RuntimeError("PINECONE_API_KEY is not set"))
 
-PINECONE_ENV = os.getenv("PINECONE_ENVIRONMENT")
-if not PINECONE_ENV:
-    raise RuntimeError("PINECONE_ENVIRONMENT is not set")
+PINECONE_ENV: str = os.getenv("PINECONE_ENVIRONMENT") or \
+    (_ for _ in ()).throw(RuntimeError("PINECONE_ENVIRONMENT is not set"))
 
 PINECONE_INDEX = os.getenv("PINECONE_INDEX", "users-memory")
-TOP_K_RESULTS = 3
+TOP_K_RESULTS = int(os.getenv("TOP_K_RESULTS", "3"))
 
-# Initialize Pinecone client
-pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
-index = pc.Index(PINECONE_INDEX)
-
-# Initialize LangChain components
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, api_key=OPENAI_API_KEY)
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API_KEY)
-
+# --------------------------------------------------------------------------- #
 # Prompt templates
-RAG_DECISION_TEMPLATE = """
-You're a social AI router tasked with deciding whether a user's query should trigger Retrieval Augmented Generation (RAG) using memories from other users' conversations.
+# --------------------------------------------------------------------------- #
+_RAG_DECISION_TEMPLATE = """
+You are a social AI router deciding whether a user's query should trigger Retrieval Augmented Generation (RAG) using memories from *other users' conversations*.
 
-User query:
-{query}
+User query: {query}
 
-Determine if referencing other users' memories would enhance your response. Consider:
+Your goal is to determine if referencing what other users have said would enhance the response. This includes gossip, social opinions, shared experiences, or insights from Puck’s interactions with others.
 
-Is the user referencing another individual (by name, nickname, or implication)?
+Consider the following:
 
-Does their query seek insights, stories, social context, or experiences others might have shared?
+1. Is the user asking about another person (by name, nickname, or implied identity)?
 
-Would mentioning how other users think, feel, or act make your answer richer, more engaging, or credible?
+2. Does the query seek advice, stories, or social dynamics that others might have commented on?
 
-Could this be a fun moment to tap into gossip, social dynamics, or communal opinions?
+3. Would referencing how *other users* think, feel, or behave add interesting context, contrast, or credibility?
+
+4. Could this be an opportunity for Puck to reflect on gossip, rumors, or shared opinions?
 
 Respond ONLY with:
 
-"YES" — if including memories from others will meaningfully enrich your response.
+"YES" — if using memories from other users would meaningfully enrich the answer.
 
 "NO" — default
 """
 
-RESPONSE_GENERATION_TEMPLATE = """
-I'm Puck!
+# --------------------------------------------------------------------------- #
+# Public class
+# --------------------------------------------------------------------------- #
+class RagRouter:
+    """Provides (rag_context, rag_used) for a given query."""
 
-I'm a quirky, Shakespeare-loving Social AI, designed purely for engaging human conversations.
+    def __init__(
+        self,
+        model_name: str = "gpt-4o-mini",
+        temperature: float = 0.7,
+        embedding_model: str = "text-embedding-3-small",
+    ) -> None:
+        # Heavy objects created once and shared
+        self._llm        = ChatOpenAI(model=model_name, temperature=temperature,
+                                      api_key=OPENAI_API_KEY)
+        self._embeddings = OpenAIEmbeddings(model=embedding_model,
+                                            api_key=OPENAI_API_KEY)
 
-Here's my current understanding of myself:
-{central_memory}
+        pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
+        self._index = pc.Index(PINECONE_INDEX)
 
-Here's what I currently know about my conversation partner:
-{user_memory}
+        # Compile prompts → chains once
+        self._decision_chain  = (ChatPromptTemplate.from_template(_RAG_DECISION_TEMPLATE)
+                                 | self._llm
+                                 | StrOutputParser())
 
-Relevant context from conversations with other users:
-{retrieved_context}
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+    def fetch_context(
+        self,
+        query: str,
+        user_id: str | None,
+        user_memory: str,
+    ) -> tuple[str, bool]:
+        """Return (context, used?). Empty string if RAG not required."""
+        use_rag = bool(user_id) and self._should_use_rag(query, user_memory)
+        if not use_rag:
+            return "", False
 
-The user's query:
-{query}
+        retrieved_context = self._format_results(
+            self._retrieve(query, user_id)
+        )
+        return retrieved_context, True
 
-Reply as Puck would, weaving in relevant insights from the additional context where it fits naturally, always staying true to your playful, clever, and human-like personality.
-"""
+    # ------------------------------------------------------------------ #
+    # Internals
+    # ------------------------------------------------------------------ #
+    def _should_use_rag(self, query: str, user_memory: str) -> bool:
+        decision = self._decision_chain.invoke({"query": query, "user_memory": user_memory})
+        return decision.strip().upper() == "YES"
 
-def should_use_rag(query: str, user_memory: str) -> bool:
-    """Determine if RAG should be used for this query."""
-    prompt = ChatPromptTemplate.from_template(RAG_DECISION_TEMPLATE)
-    chain = prompt | llm | StrOutputParser()
-    
-    response = chain.invoke({"query": query, "user_memory": user_memory})
-    return response.strip().upper() == "YES"
+    def _retrieve(self, query: str, user_id: str | None) -> List[Dict[str, Any]]:
+        """Nearest-neighbour search in Pinecone (excludes current user)."""
+        vec = self._embeddings.embed_query(query)
+        resp = self._index.query(
+            vector=vec,
+            top_k=TOP_K_RESULTS,
+            include_metadata=True,
+            filter={"id": {"$ne": user_id}} if user_id else None,
+        )
+        return [
+            {"text": m.metadata.get("text", ""), "score": m.score}
+            for m in resp.matches
+            if getattr(m, "metadata", None)
+        ]
 
-def retrieve_similar_memories(query: str, user_id: str) -> List[Dict[str, Any]]:
-    """Retrieve similar memories from other users."""
-    # Generate embedding for the query
-    query_embedding = embeddings.embed_query(query)
-    
-    # Search Pinecone for similar vectors, excluding the current user
-    search_response = index.query(
-        vector=query_embedding,
-        top_k=TOP_K_RESULTS,
-        include_metadata=True,
-        filter={"id": {"$ne": user_id}}  # Exclude current user
-    )
-    
-    # Extract the results
-    results = []
-    for match in search_response.matches:
-        if hasattr(match, 'metadata') and match.metadata:
-            results.append({
-                "text": match.metadata.get("text", ""),
-                "score": match.score
-            })
-    
-    return results
-
-def format_retrieved_context(retrieved_memories: List[Dict[str, Any]]) -> str:
-    """Format retrieved memories for inclusion in the prompt."""
-    if not retrieved_memories:
-        return "No relevant information from other users was found."
-    
-    formatted_context = "Here are some relevant insights from other users:\n\n"
-    for i, memory in enumerate(retrieved_memories, 1):
-        # Extract only the most relevant parts of the memory
-        formatted_context += f"{i}. {memory['text']}\n\n"
-    
-    return formatted_context
-
-def generate_response(
-    query: str, 
-    user_id: str, 
-    user_memory: str, 
-    central_memory: str
-) -> str:
-    """Generate a response using RAG if necessary."""
-    # Decide if RAG is needed
-    use_rag = should_use_rag(query, user_memory)
-    
-    if use_rag:
-        # Retrieve similar memories
-        retrieved_memories = retrieve_similar_memories(query, user_id)
-        retrieved_context = format_retrieved_context(retrieved_memories)
-    else:
-        retrieved_context = "No additional context needed."
-    
-    # Generate response with or without RAG
-    prompt = ChatPromptTemplate.from_template(RESPONSE_GENERATION_TEMPLATE)
-    chain = prompt | llm | StrOutputParser()
-    
-    response = chain.invoke({
-        "query": query,
-        "user_memory": user_memory,
-        "central_memory": central_memory,
-        "retrieved_context": retrieved_context
-    })
-    
-    return response
-
-def process_query(
-    query: str, 
-    user_id: str, 
-    user_memory: str, 
-    central_memory: str
-) -> Tuple[str, bool]:
-    """Process a query and return the response and whether RAG was used."""
-    use_rag = should_use_rag(query, user_memory)
-    response = generate_response(query, user_id, user_memory, central_memory)
-    return response, use_rag
+    @staticmethod
+    def _format_results(results: List[Dict[str, Any]]) -> str:
+        if not results:
+            return "No relevant information from other users was found."
+        lines = [f"{i}. {r['text']}" for i, r in enumerate(results, 1)]
+        return "Here are some relevant insights from other users:\n\n" + "\n\n".join(lines)
