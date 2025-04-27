@@ -4,7 +4,7 @@ import uuid
 from typing import Dict
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from chat import GeminiChat
+from chat import Chat
 import user_tracking
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ CORS(
 # ---------------------------------------------------------------------------
 # In‑memory session store (for demo / single‑instance deployments)
 # ---------------------------------------------------------------------------
-_chat_sessions: Dict[str, GeminiChat] = {}
+_chat_sessions: Dict[str, Chat] = {}
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -39,7 +39,7 @@ def chat_endpoint():
     # Bootstrap session
     if not session_id or session_id not in _chat_sessions:
         session_id = str(uuid.uuid4())
-        _chat_sessions[session_id] = GeminiChat(user_id=user_id)
+        _chat_sessions[session_id] = Chat(user_id=user_id)
         # Start tracking when a new session begins
         if user_id:
             user_tracking.start_tracking(user_id, session_id)

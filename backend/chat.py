@@ -11,21 +11,17 @@ import rag_router
 # ---------------------------------------------------------------------------
 load_dotenv()
 
-API_KEY: str | None = os.getenv("GEMINI_API_KEY")
+API_KEY: str | None = os.getenv("OPENAI_API_KEY")
 if not API_KEY:
-    raise RuntimeError("Environment variable GEMINI_API_KEY is not set")
+    raise RuntimeError("Environment variable OPENAI_API_KEY is not set")
 
-MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-GEMINI_URL: str = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
-)
+MODEL_NAME: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_URL: str = "https://api.openai.com/v1/chat/completions"
 
 DEFAULT_GENERATION_CFG: Dict[str, Any] = {
-    "stopSequences": [],
     "temperature": 1.2,
-    "maxOutputTokens": 250,
-    "topP": 0.9,
-    "topK": 40,
+    "max_tokens": 250,
+    "top_p": 0.9,
 }
 
 _SYSTEM_TEMPLATE: str = """
@@ -46,7 +42,7 @@ Additional information:
 # ---------------------------------------------------------------------------
 # Core Gemini wrapper
 # ---------------------------------------------------------------------------
-class GeminiChat:
+class Chat:
     """Conversation manager for a single user/session."""
 
     def __init__(self, user_id: str | None = None, session_id: str | None = None) -> None:
@@ -126,9 +122,8 @@ Respond with only your **fully updated understanding of this person**, rewritten
             "contents": [{"role": "user", "parts": [{"text": user_memory_update_prompt}]}],
             "generationConfig": {
                 "temperature": 1.0,
-                "maxOutputTokens": 5000,
-                "topP": 0.9,
-                "topK": 40,
+                "max_tokens": 5000,
+                "top_p": 0.9,
             },
         }
 
@@ -142,16 +137,15 @@ Respond with only your **fully updated understanding of this person**, rewritten
                 "contents": [{"role": "user", "parts": [{"text": central_prompt}]}],
                 "generationConfig": {
                     "temperature": 1.0,
-                    "maxOutputTokens": 5000,
-                    "topP": 0.9,
-                    "topK": 40,
+                    "max_tokens": 5000,
+                    "top_p": 0.9,
                 },
             }
             updated_central = self._post(payload_central)
             firebase_config.update_central_memory(updated_central)
             return True
         except Exception as exc:  # noqa: BLE001
-            print(f"[GeminiChat] memory update failed: {exc}")
+            print(f"[Chat] memory update failed: {exc}")
             return False
 
     def central_memory_update_prompt(self, current_central_memory: str, chat_text: str) -> str:
@@ -187,10 +181,29 @@ Respond with only your **fully updated understanding of yourself**, rewritten fr
 
     def _post(self, payload: Dict[str, Any]) -> str:
         """POST helper that returns the raw text reply or raises."""
-        resp = self._http.post(GEMINI_URL, json=payload, timeout=30)
+        headers = {
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        }
+        # Compose OpenAI chat format
+        messages = []
+        if "system_instruction" in payload:
+            sys_msg = payload["system_instruction"]["parts"][0]["text"]
+            messages.append({"role": "system", "content": sys_msg})
+        for msg in payload.get("contents", []):
+            role = msg["role"]
+            # Gemini format: [{"role":..., "parts":[{"text":...}]}]
+            content = msg["parts"][0]["text"]
+            messages.append({"role": "user" if role == "user" else "assistant", "content": content})
+        data = {
+            "model": MODEL_NAME,
+            "messages": messages,
+            **{k: v for k, v in payload.get("generationConfig", DEFAULT_GENERATION_CFG).items() if k in ["temperature", "max_tokens", "top_p"]},
+        }
+        resp = self._http.post(OPENAI_URL, headers=headers, json=data, timeout=30)
         resp.raise_for_status()
-        data = resp.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        result = resp.json()
+        return result["choices"][0]["message"]["content"]
 
     def _append(self, role: str, text: str) -> None:
         self._history.append({"role": role, "parts": [{"text": text}]})
@@ -205,7 +218,7 @@ def _cli() -> None:  # pragma: no cover
 
     print("Puck is here!  (type 'exit' to quit)\n")
     user_id = "test_user"
-    chat = GeminiChat(user_id=user_id)
+    chat = Chat(user_id=user_id)
 
     while True:
         user_input = input("You: ")
