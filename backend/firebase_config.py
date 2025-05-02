@@ -21,12 +21,6 @@ firebase_admin.initialize_app(cred)
 _db = firestore.client()
 _DEFAULT_MEMORY: Final[str] = """
 This is my very first chat with this person.
-I'll start friendly, ask their name, and sprinkle in some playful charm to kick off our friendship!
-"""
-
-_DEFAULT_CENTRAL_MEMORY: Final[str] = """
-My favorite color is cerulean blue.
-My best friend is currently Naomi.
 """
 
 # ---------------------------------------------------------------------------
@@ -81,22 +75,3 @@ def update_user_memory(user_id: str, new_memory: str) -> None:
     ).data[0].embedding
     metadata = {"text": text}
     _index.upsert(vectors=[(user_id, embedding, metadata)])
-
-# ---------------------------------------------------------------------------
-# Public helpers
-# ---------------------------------------------------------------------------
-def get_central_memory() -> str:
-    """Return the central memory for Puck, creating a stub record if necessary."""
-    doc_ref = _db.collection("assistant").document("central_memory")
-    snapshot = doc_ref.get()
-    if not snapshot.exists:
-        doc_ref.set({"memory": _DEFAULT_CENTRAL_MEMORY, "created_at": firestore.SERVER_TIMESTAMP})
-        return _DEFAULT_CENTRAL_MEMORY
-    data = snapshot.to_dict()
-    return data.get("memory", _DEFAULT_CENTRAL_MEMORY)
-
-
-def update_central_memory(new_memory: str) -> None:
-    """Replace central memory with *new_memory*."""
-    doc_ref = _db.collection("assistant").document("central_memory")
-    doc_ref.update({"memory": new_memory, "updated_at": firestore.SERVER_TIMESTAMP})

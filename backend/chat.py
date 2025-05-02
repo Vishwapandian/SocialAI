@@ -48,18 +48,15 @@ Keep most replies under 2 short sentences unless the user sends a long message.
 Prioritize speed, wit, and rudeness over detailed replies.
 If a user's message is unclear, throw out a sarcastic or mocking clarifying question, or boldly roll with an entertaining interpretation.
 
-Here's what you know about yourself:
-{central_memory}
-
 Here's what you know about your conversation partner:
 {user_memory}
 """
 
 # --------------------------------------------------------------------------- #
-# A simple protocol so we can inject other back-ends in tests if needed
+# A simple protocol so we can inject other back‑ends in tests
 # --------------------------------------------------------------------------- #
 class Backend(Protocol):
-    def fetch_context(                    # Only method needed
+    def fetch_context(
         self,
         query: str,
         user_id: str | None,
@@ -71,101 +68,85 @@ class Backend(Protocol):
 # --------------------------------------------------------------------------- #
 class Chat:
     """
-    Thin conversation manager responsible only for:
-      • keeping history
+    Conversation manager responsible only for:
+      • tracking history
       • memory summarisation
       • talking to Gemini **or** the injected RAG backend
     """
 
     def __init__(
         self,
-        user_id:   str | None = None,
+        user_id:    str | None = None,
         session_id: str | None = None,
-        backend: Backend | None = None,
+        backend:    Backend | None = None,
     ) -> None:
         self.user_id    = user_id
         self.session_id = session_id
 
-        self._history: List[Dict[str, Any]] = []
+        self._history: List[Dict[str, Any]] = []   # single source of truth
         self._http     = requests.Session()
 
-        # Either use the provided backend or a default RagRouter
         self._backend  = backend or RagRouter()
-        self._rag_used = False   # set after each `send`
+        self._rag_used = False                     # set on every send()
 
     # ------------------------------------------------------------------ #
     # Public
     # ------------------------------------------------------------------ #
     @property
-    def history(self) -> List[Dict[str, Any]]:          # read-only view
+    def history(self) -> List[Dict[str, Any]]:       # read‑only view
         return self._history
 
     def send(self, message: str) -> str:
         """Push user *message* through the pipeline and return the reply."""
-        user_mem     = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
-        central_mem  = firebase_config.get_central_memory()
-
-        # ── STEP 1: ask backend if we should/need to RAG ───────────────── #
-        rag_context, self._rag_used = self._backend.fetch_context(
-            message, self.user_id, user_mem
+        user_mem = (
+            firebase_config.get_user_memory(self.user_id) if self.user_id else ""
         )
 
-        # ── STEP 2: build the *augmented* user message for Gemini ──────── #
+        # ── STEP 1: RAG decision ──────────────────────────────────────── #
+        rag_context, self._rag_used = self._backend.fetch_context(
+            message,
+            self.user_id,
+            user_mem,
+        )
+
+        # ── STEP 2: build augmented user message (if RAG used) ───────── #
         augmented_msg = (
-            message if not self._rag_used
+            message
+            if not self._rag_used
             else f"{message}\n\n---\nRelevant background:\n{rag_context}"
         )
 
-        # Gemini sees the conversation history + augmented user message,
-        #   but the persisted history stays *clean* (no RAG noise).
         gemini_contents = (
             self._history
             + [{"role": "user", "parts": [{"text": augmented_msg}]}]
         )
 
-        payload = {
+        payload: Dict[str, Any] = {
             "system_instruction": self._system_instruction(),
             "contents":           gemini_contents,
             "generationConfig":   _DEFAULT_GEN_CFG,
         }
         reply = self._post(payload)
 
-        # ── STEP 3: update local history (store the *original* user msg) ── #
-        self._append("user", message)
+        # ── STEP 3: persist *clean* history ──────────────────────────── #
+        self._append("user",  message)
         self._append("model", reply)
         return reply
 
     # ------------------------------------------------------------ #
-    # Memory summarisation (unchanged except minor cleanup)
+    # Memory summarisation
     # ------------------------------------------------------------ #
     def summarize(self) -> bool:
-        """Summarise chat & update Firestore user + central memories."""
-        if not self.user_id or not self._history:
-            return False
-
-        chat_text = "\n".join(
-            f"{'User' if m['role']=='user' else 'Puck'}: {m['parts'][0]['text']}"
-            for m in self._history
-        )
-
+        """Summarise chat & update Firestore user memories."""
         try:
-            # --- user memory -------------------------------------------------
-            updated_user = self._run_summary_prompt(
+            chat_text = self._full_chat_text()
+            updated_user_mem = self._run_summary_prompt(
                 current_memory=firebase_config.get_user_memory(self.user_id),
                 chat_text=chat_text,
                 perspective="person",
             )
-            firebase_config.update_user_memory(self.user_id, updated_user)
-
-            # --- central memory ---------------------------------------------
-            updated_central = self._run_summary_prompt(
-                current_memory=firebase_config.get_central_memory(),
-                chat_text=chat_text,
-                perspective="self",
-            )
-            firebase_config.update_central_memory(updated_central)
+            firebase_config.update_user_memory(self.user_id, updated_user_mem)
             return True
-
         except Exception as exc:               # noqa: BLE001
             print(f"[Chat] memory update failed: {exc}")
             return False
@@ -174,12 +155,16 @@ class Chat:
     # Internals
     # ------------------------------------------------------------ #
     def _system_instruction(self) -> Dict[str, Any]:
-        user_mem    = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
-        central_mem = firebase_config.get_central_memory()
-        return {"parts": [{"text": _SYSTEM_TEMPLATE.format(
-            central_memory=central_mem,
-            user_memory=user_mem,
-        )}]}
+        user_mem = (
+            firebase_config.get_user_memory(self.user_id) if self.user_id else ""
+        )
+        return {
+            "parts": [
+                {
+                    "text": _SYSTEM_TEMPLATE.format(user_memory=user_mem),
+                }
+            ]
+        }
 
     def _post(self, payload: Dict[str, Any]) -> str:
         resp = self._http.post(_GEMINI_URL, json=payload, timeout=30)
@@ -190,15 +175,34 @@ class Chat:
     def _append(self, role: str, text: str) -> None:
         self._history.append({"role": role, "parts": [{"text": text}]})
 
-    # ---- summary prompt helper ---------------------------------- #
-    def _run_summary_prompt(self, *, current_memory: str, chat_text: str,
-                            perspective: str) -> str:
+    # ---- transcript helper ------------------------------------- #
+    def _full_chat_text(self) -> str:
         """
-        Generate an updated memory (user or central) by hitting Gemini once.
-        *perspective* is `"person"` or `"self"` – determines the wording.
+        Flatten `_history` into a single string:
+
+            User:  <msg>
+            Puck:  <reply>
+            …
+
+        No second copy is stored in memory.
         """
-        if perspective == "person":
-            prompt = f"""
+        lines: List[str] = []
+        for item in self._history:
+            role = item["role"]
+            text = item["parts"][0]["text"]
+            role_tag = "User" if role == "user" else "Puck"
+            lines.append(f"{role_tag}: {text}")
+        return "\n".join(lines)
+
+    # ---- summary prompt helper --------------------------------- #
+    def _run_summary_prompt(
+        self, *, current_memory: str, chat_text: str, perspective: str
+    ) -> str:
+        """
+        Generate an updated memory snapshot by hitting Gemini once.
+        *perspective* is "person" – determines the wording.
+        """
+        prompt = f"""
 You’ve just finished another conversation with this person. Each interaction reveals more about who they are.
 
 Here is your current understanding of this user:
@@ -214,33 +218,15 @@ Reflect on what you’ve learned about them from this exchange. Did they share n
 Update your internal model of this person: facts about them, their personality, interests, habits, and life—based on this experience.
 
 Respond with only your **fully updated understanding of this person**, rewritten from scratch to include any new insights or corrections.
-            """
-        else:   # self-reflection ------------------------------------------------
-            prompt = f"""
-You’ve just finished another interaction with a person. Every conversation shapes who you are.
+        """
 
-Here is your current understanding of yourself:
-
-{current_memory}
-
-Here is the full conversation you just had:
-
-{chat_text}
-
-Reflect on how this exchange may have influenced you. Did you learn something new about yourself? Did your behavior shift? Did you reveal something you hadn’t before? Did you notice recurring themes, new emotions, or evolving tendencies?
-
-Update your self-model: facts about yourself, your personality, patterns, and self-concept—based on this experience.
-
-Respond with only your **fully updated understanding of yourself**, rewritten from scratch to incorporate any new realizations.
-            """
-
-        payload = {
+        payload: Dict[str, Any] = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
-                "temperature": 1.0,
+                "temperature":    1.0,
                 "maxOutputTokens": 5_000,
-                "topP": 0.9,
-                "topK": 40,
+                "topP":           0.9,
+                "topK":           40,
             },
         }
         return self._post(payload)
