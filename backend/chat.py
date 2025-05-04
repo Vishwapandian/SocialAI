@@ -1,4 +1,3 @@
-# chat.py  –– Gemini‑only, Pinecone‑powered RAG via function calling
 from __future__ import annotations
 
 import os
@@ -47,6 +46,12 @@ _pinecone_idx = _pc.Index(PINECONE_INDEX)
 _embeddings   = OpenAIEmbeddings(model="text-embedding-3-small",
                                  api_key=OPENAI_API_KEY)
 
+# ––– Perplexity Web Search -------------------------------------------------- #
+PERPLEXITY_API_KEY: str = os.getenv("PERPLEXITY_API_KEY") or \
+    (_ for _ in ()).throw(RuntimeError("PERPLEXITY_API_KEY is not set"))
+PERPLEXITY_MODEL: str = os.getenv("PERPLEXITY_MODEL", "sonar")
+PERPLEXITY_URL: str = "https://api.perplexity.ai/chat/completions"
+
 # --------------------------------------------------------------------------- #
 # Gemini function declaration – passed to the model on every request
 # --------------------------------------------------------------------------- #
@@ -64,6 +69,25 @@ _PINECONE_RAG_DECL = {
             "query": {
                 "type":        "string",
                 "description": "The user's input to search for similar memories."
+            },
+        },
+        "required": ["query"],
+    },
+}
+
+_WEB_SEARCH_DECL = {
+    "name":        "search_web",
+    "description": (
+        "Search the internet for up-to-date information using Perplexity API. "
+        "Useful when the user asks about current events, facts that might have changed, "
+        "or information you're uncertain about."
+    ),
+    "parameters": {
+        "type":       "object",
+        "properties": {
+            "query": {
+                "type":        "string",
+                "description": "The search query to look up on the web."
             },
         },
         "required": ["query"],
@@ -91,6 +115,36 @@ def search_pinecone_memories(*, query: str, user_id: str | None = None) -> Dict[
     return {
         "results": results or
         ["No relevant information from other users was found."]
+    }
+
+def search_web(*, query: str) -> Dict[str, Any]:
+    """Searches the web using Perplexity API and returns the result."""
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": f"Bearer {PERPLEXITY_API_KEY}"
+    }
+    
+    payload = {
+        "model": PERPLEXITY_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a helpful web search assistant. Provide factual, up-to-date information with sources when available."
+            },
+            {
+                "role": "user",
+                "content": query
+            }
+        ]
+    }
+    
+    response = requests.post(PERPLEXITY_URL, headers=headers, json=payload, timeout=30)
+    response.raise_for_status()
+    result = response.json()
+    
+    return {
+        "result": result["choices"][0]["message"]["content"]
     }
 
 # --------------------------------------------------------------------------- #
@@ -142,7 +196,7 @@ class Chat:
             "system_instruction": system_instr,
             "contents":           self._history,
             "generationConfig":   _DEFAULT_GEN_CFG,
-            "tools":              [{"functionDeclarations": [_PINECONE_RAG_DECL]}],
+            "tools":              [{"functionDeclarations": [_PINECONE_RAG_DECL, _WEB_SEARCH_DECL]}],
             # leave function_calling_config default = AUTO
         }
         response = self._post_raw(payload)
@@ -151,10 +205,17 @@ class Chat:
         # ---- Did Gemini ask to call our function? ---------------------- #
         if "functionCall" in first_part:
             fn_call = first_part["functionCall"]
-            # execute tool
-            tool_result = search_pinecone_memories(
-                **fn_call.get("args", {}), user_id=self.user_id
-            )
+            fn_name = fn_call["name"]
+            
+            # Execute the appropriate tool based on function name
+            if fn_name == "search_pinecone_memories":
+                tool_result = search_pinecone_memories(
+                    **fn_call.get("args", {}), user_id=self.user_id
+                )
+            elif fn_name == "search_web":
+                tool_result = search_web(**fn_call.get("args", {}))
+            else:
+                tool_result = {"error": f"Unknown function: {fn_name}"}
 
             # Gemini expects a *function response* message next
             self._history.append({
@@ -177,7 +238,7 @@ class Chat:
                 "contents":           self._history,
                 "generationConfig":   _DEFAULT_GEN_CFG,
                 # keep tools so model can chain if it really wants
-                "tools":              [{"functionDeclarations": [_PINECONE_RAG_DECL]}],
+                "tools":              [{"functionDeclarations": [_PINECONE_RAG_DECL, _WEB_SEARCH_DECL]}],
             }
             response = self._post_raw(payload)
             reply_text = response["candidates"][0]["content"]["parts"][0]["text"]
