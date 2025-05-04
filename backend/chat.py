@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Protocol
 
 import requests
 from dotenv import load_dotenv
-from pinecone import Pinecone                                                # NEW
-from langchain_openai import OpenAIEmbeddings                                 # NEW
+from pinecone import Pinecone
+from langchain_openai import OpenAIEmbeddings
 
 import firebase_config
 
@@ -297,8 +297,21 @@ class Chat:
         self, *, current_memory: str, chat_text: str, perspective: str
     ) -> str:  # identical to previous implementation
         prompt = f"""
-You've just finished another conversation with this person …
-[omitted for brevity –– same as before]
+You’ve just finished another conversation with this person. Each interaction reveals more about who they are.
+
+Here is your current understanding of this user:
+
+{current_memory}
+
+Here is the full conversation you just had:
+
+{chat_text}
+
+Reflect on what you’ve learned about them from this exchange. Did they share new facts, feelings, or preferences? Did they contradict or deepen something you already knew? Are there shifts in mood, identity, goals, or relationships worth noting?
+
+Update your internal model of this person: facts about them, their personality, interests, habits, and life—based on this experience.
+
+Respond with only your **fully updated understanding of this person**, rewritten from scratch to include any new insights or corrections.
         """
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],

@@ -81,6 +81,7 @@ def end_chat_endpoint():
     memory_saved = chat.summarize()
     
     # Get the updated memory and update it in the tracker
+    updated_memory = None
     if memory_saved and user_id:
         from firebase_config import get_user_memory
         updated_memory = get_user_memory(user_id)
@@ -92,7 +93,9 @@ def end_chat_endpoint():
     return jsonify({
         "success": memory_saved and tracking_saved, 
         "message": "Chat ended successfully",
-        "tracking_saved": tracking_saved
+        "tracking_saved": tracking_saved,
+        "memory_saved": memory_saved,
+        "updated_memory": updated_memory,  # Optional: for debugging
     })
 
 
