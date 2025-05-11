@@ -46,14 +46,14 @@ Conversation:
 Current Emotional state (as comma-separated integers for: {emotion_keys_list}):
 {current_emotional_state}
 
-Output the updated emotional state *exactly* in this format: a comma-separated list of six integers representing {emotion_keys_list}, ensuring the sum of these integers is 100.
-Example: 50,10,10,5,5,20
+Output only the updated emotional state *exactly* in this format: a comma-separated list of six integers representing {emotion_keys_list}, ensuring the sum of these integers is 100.
+Example: "50,10,10,5,5,20"
 """
 
 _DEFAULT_GEN_CFG: Dict[str, Any] = {
     "stopSequences":      [],
     "temperature":        1.2,
-    "maxOutputTokens":    250,
+    "maxOutputTokens":    20,
     "topP":               0.9,
     "topK":               40,
 }
@@ -327,12 +327,52 @@ class Chat:
         self._history.append({"role": role, "parts": [{"text": text}]})
 
     # ---- transcript helper ------------------------------------- #
-    def _full_chat_text(self) -> str:  # unchanged …
+    def _full_chat_text(self) -> str:
         lines: List[str] = []
         for item in self._history:
-            role_tag = "User" if item["role"] == "user" else "Birdie"
-            lines.append(f"{role_tag}: {item['parts'][0]['text']}")
-        return "\n".join(lines)
+            part = item["parts"][0]
+            role = item["role"]
+
+            if "text" in part:
+                role_tag = "User" if role == "user" else "Birdie"
+                lines.append(f"{role_tag}: {part['text']}")
+            elif "functionCall" in part:  # This will have role: "model"
+                fc = part["functionCall"]
+                tool_name = fc.get('name', 'unknown_tool')
+                query = fc.get('args', {}).get('query', 'N/A')
+                lines.append(f"Birdie (system): Initiating tool call to '{tool_name}' with query: '{query}'.")
+            elif "functionResponse" in part:  # This currently has role: "user"
+                fr = part["functionResponse"]
+                tool_name = fr.get('name', 'unknown_tool')
+                response_data = fr.get('response', {})
+
+                content_summary = f"Output from tool '{tool_name}'."  # Generic fallback
+
+                if tool_name == 'search_web':
+                    web_text = response_data.get('result')
+                    if isinstance(web_text, str) and web_text.strip():
+                        content_summary = web_text
+                    else:
+                        content_summary = f"Web search by '{tool_name}' yielded no text result or an empty result."
+                elif tool_name == 'search_pinecone_memories':
+                    pinecone_list = response_data.get('results')
+                    if isinstance(pinecone_list, list):
+                        meaningful_results = [r for r in pinecone_list if isinstance(r, str) and r.strip()]
+                        if meaningful_results:
+                            content_summary = "; ".join(meaningful_results)
+                        else:
+                            content_summary = f"Memory search by '{tool_name}' found no relevant snippets or returned empty."
+                    else:
+                        content_summary = f"Memory search by '{tool_name}' returned unexpected data format instead of a list."
+                
+                # Truncate if too long
+                if len(content_summary) > 250:
+                    content_summary = content_summary[:247] + "..."
+                
+                # Even though role is "user" for the functionResponse part in history,
+                # this isn't a direct user utterance for the summary/emotion context.
+                lines.append(f"System (tool output): {content_summary}")
+        return "\\n".join(lines)
 
     # ---- summary helper (unchanged) ---------------------------- #
     def _run_summary_prompt(
