@@ -53,7 +53,7 @@ Example: "50,10,10,5,5,20"
 _DEFAULT_GEN_CFG: Dict[str, Any] = {
     "stopSequences":      [],
     "temperature":        1.2,
-    "maxOutputTokens":    20,
+    "maxOutputTokens":    250,
     "topP":               0.9,
     "topK":               40,
 }
@@ -166,7 +166,7 @@ def search_web(*, query: str) -> Dict[str, Any]:
         ]
     }
     
-    response = requests.post(PERPLEXITY_URL, headers=headers, json=payload, timeout=30)
+    response = requests.post(PERPLEXITY_URL, headers=headers, json=payload, timeout=60)
     response.raise_for_status()
     result = response.json()
     
@@ -258,8 +258,17 @@ class Chat:
                 "role": "model",
                 "parts": [{"functionCall": fn_call}],
             })
+
+            # Determine the role for the function response part
+            function_response_role = "user"  # Default role
+            if fn_name == "search_pinecone_memories":
+                function_response_role = "memory_tool"
+            elif fn_name == "search_web":
+                function_response_role = "internet_tool"
+            # For unknown functions, tool_result is an error, and role remains "user"
+
             self._history.append({
-                "role": "user",
+                "role": function_response_role,
                 "parts": [{
                     "functionResponse": {
                         "name": fn_call["name"],
@@ -293,7 +302,7 @@ class Chat:
     # ------------------------------------------------------------ #
     def summarize(self) -> bool:  # … identical to previous version …
         try:
-            chat_text = self._full_chat_text()
+            chat_text = self._full_chat_text(exclude_tool_outputs=True)
             updated_user_mem = self._run_summary_prompt(
                 current_memory=firebase_config.get_user_memory(self.user_id),
                 chat_text=chat_text,
@@ -327,7 +336,7 @@ class Chat:
         self._history.append({"role": role, "parts": [{"text": text}]})
 
     # ---- transcript helper ------------------------------------- #
-    def _full_chat_text(self) -> str:
+    def _full_chat_text(self, exclude_tool_outputs: bool = False) -> str:
         lines: List[str] = []
         for item in self._history:
             part = item["parts"][0]
@@ -341,38 +350,47 @@ class Chat:
                 tool_name = fc.get('name', 'unknown_tool')
                 query = fc.get('args', {}).get('query', 'N/A')
                 lines.append(f"Birdie (system): Initiating tool call to '{tool_name}' with query: '{query}'.")
-            elif "functionResponse" in part:  # This currently has role: "user"
+            elif "functionResponse" in part:  # Role could be "user", "memory_tool", or "internet_tool"
+                if exclude_tool_outputs and role in ["memory_tool", "internet_tool"]:
+                    continue # Skip these tool outputs if requested
+
                 fr = part["functionResponse"]
-                tool_name = fr.get('name', 'unknown_tool')
+                tool_name_from_response = fr.get('name', 'unknown_tool')
                 response_data = fr.get('response', {})
 
-                content_summary = f"Output from tool '{tool_name}'."  # Generic fallback
+                content_summary = f"Output from tool '{tool_name_from_response}'."  # Generic fallback
 
-                if tool_name == 'search_web':
+                if tool_name_from_response == 'search_web':
                     web_text = response_data.get('result')
                     if isinstance(web_text, str) and web_text.strip():
                         content_summary = web_text
                     else:
-                        content_summary = f"Web search by '{tool_name}' yielded no text result or an empty result."
-                elif tool_name == 'search_pinecone_memories':
+                        content_summary = f"Web search by '{tool_name_from_response}' yielded no text result or an empty result."
+                elif tool_name_from_response == 'search_pinecone_memories':
                     pinecone_list = response_data.get('results')
                     if isinstance(pinecone_list, list):
                         meaningful_results = [r for r in pinecone_list if isinstance(r, str) and r.strip()]
                         if meaningful_results:
                             content_summary = "; ".join(meaningful_results)
                         else:
-                            content_summary = f"Memory search by '{tool_name}' found no relevant snippets or returned empty."
+                            content_summary = f"Memory search by '{tool_name_from_response}' found no relevant snippets or returned empty."
                     else:
-                        content_summary = f"Memory search by '{tool_name}' returned unexpected data format instead of a list."
+                        content_summary = f"Memory search by '{tool_name_from_response}' returned unexpected data format instead of a list."
                 
                 # Truncate if too long
                 if len(content_summary) > 250:
                     content_summary = content_summary[:247] + "..."
                 
-                # Even though role is "user" for the functionResponse part in history,
-                # this isn't a direct user utterance for the summary/emotion context.
-                lines.append(f"System (tool output): {content_summary}")
-        return "\\n".join(lines)
+                prefix = f"Tool ({tool_name_from_response} output)" # Default fallback
+                if role == "memory_tool":
+                    prefix = f"Memory Tool ({tool_name_from_response} output)"
+                elif role == "internet_tool":
+                    prefix = f"Internet Tool ({tool_name_from_response} output)"
+                elif role == "user": 
+                    prefix = f"System (tool output from {tool_name_from_response})"
+                
+                lines.append(f"{prefix}: {content_summary}")
+        return "\n".join(lines)
 
     # ---- summary helper (unchanged) ---------------------------- #
     def _run_summary_prompt(
@@ -435,7 +453,7 @@ Respond with only your **fully updated understanding of this person**, rewritten
 
     def _update_emotions(self) -> None:
         """Calls the limbic system LLM to update the current emotional state."""
-        conversation_state = self._full_chat_text()
+        conversation_state = self._full_chat_text(exclude_tool_outputs=True)
         
         # Format current emotions as a comma-separated string of integers
         current_emotional_state_str = ",".join([str(self._emotions[key]) for key in _EMOTION_KEYS])
