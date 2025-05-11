@@ -13,7 +13,13 @@ GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 )
 
-# ––– Limbic System (Emotion Model) ----------------------------------------- #
+# ––– Memory Model ---------------------------------------------------------- #
+MEMORY_MODEL_NAME: str = "gemini-2.0-flash-lite"
+MEMORY_GEMINI_URL: str = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/{MEMORY_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
+)
+
+# ––– Limbic (Emotion) Model ----------------------------------------- #
 LIMBIC_MODEL_NAME: str = "gemini-2.0-flash-lite"
 LIMBIC_GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{LIMBIC_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
@@ -35,6 +41,22 @@ DEFAULT_GEN_CFG: Dict[str, Any] = {
     "maxOutputTokens":    250,
     "topP":               0.9,
     "topK":               40,
+}
+
+# ––– Limbic System Generation Configuration -------------------------------- #
+LIMBIC_GENERATION_CONFIG: Dict[str, Any] = {
+    "temperature":    1.0,
+    "maxOutputTokens": 20,
+    "topP":           0.9,
+    "topK":           40,
+}
+
+# ––– Memory Summary Generation Configuration ------------------------------- #
+MEMORY_SUMMARY_GEN_CFG: Dict[str, Any] = {
+    "temperature":    1.0,
+    "maxOutputTokens": 5_000,
+    "topP":           0.9,
+    "topK":           40,
 }
 
 # ––– Pinecone --------------------------------------------------------------- #

@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import Any, Dict, Callable
 import config as cfg
-import firebase_config # Assuming firebase_config is accessible like this
+import firebase_config
+import prompts as prompts
 
 def run_summary_prompt(
     current_memory: str, 
@@ -9,33 +10,15 @@ def run_summary_prompt(
     post_raw_func: Callable[..., Dict[str, Any]]
     # perspective is hardcoded to "person" in the original, so not adding as param for now
 ) -> str:
-    prompt = f"""
-You've just finished another conversation with this person. Each interaction reveals more about who they are.
-
-Here is your current understanding of this user:
-
-{current_memory}
-
-Here is the full conversation you just had:
-
-{chat_text}
-
-Reflect on what you've learned about them from this exchange. Did they share new facts, feelings, or preferences? Did they contradict or deepen something you already knew? Are there shifts in mood, identity, goals, or relationships worth noting?
-
-Update your internal model of this person: facts about them, their personality, interests, habits, and life—based on this experience.
-
-Respond with only your **fully updated understanding of this person**, rewritten from scratch to include any new insights or corrections.
-    """
+    prompt = prompts.MEMORY_SUMMARY_PROMPT_TEMPLATE.format( # Use imported prompt
+        current_memory=current_memory,
+        chat_text=chat_text
+    )
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": { # This config is specific and not from DEFAULT_GEN_CFG
-            "temperature":    1.0,
-            "maxOutputTokens": 5_000,
-            "topP":           0.9,
-            "topK":           40,
-        },
+        "generationConfig": cfg.MEMORY_SUMMARY_GEN_CFG, # Use config from cfg
     }
-    resp = post_raw_func(cfg.GEMINI_URL, payload)
+    resp = post_raw_func(cfg.MEMORY_GEMINI_URL, payload)
     return resp["candidates"][0]["content"]["parts"][0]["text"]
 
 def summarize_memory(

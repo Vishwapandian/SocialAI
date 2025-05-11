@@ -52,7 +52,7 @@ def update_emotions_state(
 
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": cfg.DEFAULT_GEN_CFG,
+        "generationConfig": cfg.LIMBIC_GENERATION_CONFIG, 
     }
 
     try:
