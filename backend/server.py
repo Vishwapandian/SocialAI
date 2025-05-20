@@ -133,5 +133,24 @@ def save_survey():
     return jsonify({"success": True, "message": "Survey data saved"})
 
 
+@app.post("/api/emotions")
+def get_emotions_endpoint():
+    data = request.get_json(silent=True) or {}
+    user_id: str | None = data.get("userId")
+
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+
+    try:
+        from firebase_config import get_user_emotions # Import here
+        emotions = get_user_emotions(user_id)
+        return jsonify({"emotions": emotions, "userId": user_id}), 200
+    except Exception as e:
+        # Log the exception for server-side debugging
+        print(f"[Server] Error fetching emotions for user {user_id}: {e}")
+        # Return a generic error message to the client
+        return jsonify({"error": "Failed to retrieve emotional state"}), 500
+
+
 if __name__ == "__main__":  # pragma: no cover
     app.run(debug=True, port=5000)
