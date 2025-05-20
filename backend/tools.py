@@ -11,7 +11,7 @@ import config as cfg
 PINECONE_RAG_DECL = {
     "name":        "search_pinecone_memories",
     "description": (
-        "Search memories that *other* users shared with Birdie and return "
+        "Search memories that *other* users shared with Puck and return "
         "relevant snippets. Useful when the user asks for gossip, opinions, "
         "or experiences of other people. Always exclude the current user's "
         "own memories (user_id)."

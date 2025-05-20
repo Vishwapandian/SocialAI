@@ -30,9 +30,8 @@ INITIAL_EMOTIONAL_STATE: Dict[str, int] = {
     "Fear":      10,
     "Anger":     5,
     "Disgust":   5,
-    "Surprise":  20,
 }
-EMOTION_KEYS: List[str] = ["Happiness", "Sadness", "Fear", "Anger", "Disgust", "Surprise"]
+EMOTION_KEYS: List[str] = ["Happiness", "Sadness", "Fear", "Anger", "Disgust"]
 
 # ––– Default Generation Configuration -------------------------------------- #
 DEFAULT_GEN_CFG: Dict[str, Any] = {
