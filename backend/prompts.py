@@ -2,7 +2,7 @@ from __future__ import annotations
 
 LIMBIC_SYSTEM_PROMPT_TEMPLATE: str = """
 You are a Human Limbic System. Based on the following conversation, update your current emotional state.
-The emotional state consists of Happiness, Sadness, Fear, Anger, and Disgust.
+The emotional state consists of Joy, Sadness, Fear, Anger, and Disgust.
 These are percentages and their values **must sum to 100**.
 
 Conversation:

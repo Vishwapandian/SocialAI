@@ -25,13 +25,13 @@ LIMBIC_GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{LIMBIC_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 )
 INITIAL_EMOTIONAL_STATE: Dict[str, int] = {
-    "Happiness": 50,
+    "Joy": 50,
     "Sadness":   10,
     "Fear":      10,
     "Anger":     5,
     "Disgust":   5,
 }
-EMOTION_KEYS: List[str] = ["Happiness", "Sadness", "Fear", "Anger", "Disgust"]
+EMOTION_KEYS: List[str] = ["Joy", "Sadness", "Fear", "Anger", "Disgust"]
 
 # ––– Default Generation Configuration -------------------------------------- #
 DEFAULT_GEN_CFG: Dict[str, Any] = {

@@ -49,13 +49,15 @@ def chat_endpoint():
     if user_id:
         user_tracking.add_message(session_id, "user", user_message)
     
-    reply = chat.send(user_message)
+    result = chat.send(user_message)
+    reply = result["reply"]
+    emotions = result["emotions"]
     
     # Track model reply
     if user_id:
         user_tracking.add_message(session_id, "model", reply)
 
-    return jsonify({"response": reply, "sessionId": session_id})
+    return jsonify({"response": reply, "emotions": emotions, "sessionId": session_id})
 
 
 @app.post("/api/end-chat")
@@ -79,6 +81,17 @@ def end_chat_endpoint():
     
     # First summarize the chat to update the user memory
     memory_saved = chat.summarize()
+
+    # Save final emotional state
+    emotions_saved = False
+    if user_id: # Ensure user_id is present before attempting to save emotions
+        from firebase_config import update_user_emotions # Import here to avoid potential circular imports at module level
+        try:
+            update_user_emotions(user_id, chat._emotions) # Accessing _emotions directly, consider a getter if preferred
+            emotions_saved = True
+        except Exception as e:
+            print(f"[Server] Failed to save emotions for user {user_id}: {e}") # Log error
+            # Decide if this failure should affect the overall success response
     
     # Get the updated memory and update it in the tracker
     updated_memory = None
@@ -91,10 +104,11 @@ def end_chat_endpoint():
     tracking_saved = user_tracking.end_tracking(session_id)
 
     return jsonify({
-        "success": memory_saved and tracking_saved, 
+        "success": memory_saved and tracking_saved and emotions_saved, 
         "message": "Chat ended successfully",
         "tracking_saved": tracking_saved,
         "memory_saved": memory_saved,
+        "emotions_saved": emotions_saved, # Add emotion save status to response
         "updated_memory": updated_memory,  # Optional: for debugging
     })
 

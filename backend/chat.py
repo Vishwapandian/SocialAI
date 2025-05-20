@@ -24,7 +24,10 @@ class Chat:
     ) -> None:
         self.user_id    = user_id
         self.session_id = session_id
-        self._emotions: Dict[str, int] = cfg.INITIAL_EMOTIONAL_STATE.copy()
+        if user_id:
+            self._emotions = firebase_config.get_user_emotions(user_id)
+        else:
+            self._emotions = cfg.INITIAL_EMOTIONAL_STATE.copy()
 
         self._history: List[Dict[str, Any]] = []    # chron. list of Gemini‑style parts
         self._http     = requests.Session()
@@ -36,7 +39,7 @@ class Chat:
     def history(self) -> List[Dict[str, Any]]:
         return self._history
 
-    def send(self, message: str) -> str:
+    def send(self, message: str) -> Dict[str, Any]:
         """
         Send *message* to Gemini.  Gemini may respond with a function call
         (search_pinecone_memories) or with plain text.  If it calls the
@@ -120,12 +123,12 @@ class Chat:
 
             # store final reply
             self._append("model", reply_text)
-            return reply_text
+            return {"reply": reply_text, "emotions": self._emotions.copy()}
 
         # ---- No function call – simple path ---------------------------- #
         reply_text = first_part["text"]
         self._append("model", reply_text)
-        return reply_text
+        return {"reply": reply_text, "emotions": self._emotions.copy()}
 
     # ------------------------------------------------------------ #
     # Memory summarisation (unchanged)

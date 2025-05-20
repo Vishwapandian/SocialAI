@@ -47,6 +47,32 @@ if _PINECONE_INDEX not in _existing_indexes:
 _index = _pc.Index(_PINECONE_INDEX)
 
 # ---------------------------------------------------------------------------
+# Public helpers for user emotions using Firestore
+# ---------------------------------------------------------------------------
+def get_user_emotions(user_id: str) -> dict[str, int]:
+    """Return emotional state for *user_id*, fetching from Firestore, creating default if necessary."""
+    user_doc_ref = _db.collection("user_data").document(user_id)
+    user_doc = user_doc_ref.get()
+    if user_doc.exists:
+        data = user_doc.to_dict()
+        if data and "emotions" in data:
+            return data["emotions"]
+    
+    # If no emotions found, use initial default and save it
+    from config import INITIAL_EMOTIONAL_STATE # Import here to avoid circular dependency
+    default_emotions = INITIAL_EMOTIONAL_STATE.copy()
+    # Ensure the collection/document exists before trying to set (though set with merge=True often handles this)
+    # For clarity, ensuring user_doc_ref exists or creating it if using .set without merge=True initially.
+    # With merge=True, it will create if not exist or update if exists.
+    user_doc_ref.set({"emotions": default_emotions}, merge=True)
+    return default_emotions
+
+def update_user_emotions(user_id: str, emotions: dict[str, int]) -> None:
+    """Update user emotions for *user_id* in Firestore."""
+    user_doc_ref = _db.collection("user_data").document(user_id)
+    user_doc_ref.set({"emotions": emotions}, merge=True)
+
+# ---------------------------------------------------------------------------
 # Public helpers for user memory using Pinecone
 # ---------------------------------------------------------------------------
 def get_user_memory(user_id: str) -> str:
