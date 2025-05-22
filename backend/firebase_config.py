@@ -72,6 +72,20 @@ def update_user_emotions(user_id: str, emotions: dict[str, int]) -> None:
     user_doc_ref = _db.collection("user_data").document(user_id)
     user_doc_ref.set({"emotions": emotions}, merge=True)
 
+def delete_user_emotions(user_id: str) -> bool:
+    """Delete user emotions for *user_id* from Firestore."""
+    try:
+        user_doc_ref = _db.collection("user_data").document(user_id)
+        # Check if document exists first
+        user_doc = user_doc_ref.get()
+        if user_doc.exists:
+            # Delete just the emotions field, keeping other potential data
+            user_doc_ref.update({"emotions": firestore.DELETE_FIELD})
+        return True
+    except Exception as e:
+        print(f"[Firebase] Error deleting emotions for user {user_id}: {e}")
+        return False
+
 # ---------------------------------------------------------------------------
 # Public helpers for user memory using Pinecone
 # ---------------------------------------------------------------------------
@@ -101,3 +115,12 @@ def update_user_memory(user_id: str, new_memory: str) -> None:
     ).data[0].embedding
     metadata = {"text": text}
     _index.upsert(vectors=[(user_id, embedding, metadata)])
+
+def delete_user_memory(user_id: str) -> bool:
+    """Delete user memory for *user_id* from Pinecone."""
+    try:
+        _index.delete(ids=[user_id])
+        return True
+    except Exception as e:
+        print(f"[Pinecone] Error deleting memory for user {user_id}: {e}")
+        return False

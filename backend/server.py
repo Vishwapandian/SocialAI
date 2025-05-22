@@ -152,5 +152,41 @@ def get_emotions_endpoint():
         return jsonify({"error": "Failed to retrieve emotional state"}), 500
 
 
+@app.post("/api/reset")
+def reset_user_data():
+    """Reset user data by deleting emotions from Firebase and memory from Pinecone."""
+    data = request.get_json(silent=True) or {}
+    user_id: str | None = data.get("userId")
+
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+
+    try:
+        from firebase_config import delete_user_emotions, delete_user_memory
+        
+        # Delete emotions from Firebase
+        emotions_deleted = delete_user_emotions(user_id)
+        
+        # Delete memory from Pinecone
+        memory_deleted = delete_user_memory(user_id)
+        
+        # Check if both operations were successful
+        success = emotions_deleted and memory_deleted
+        
+        return jsonify({
+            "success": success,
+            "message": "User data reset successfully" if success else "Failed to reset some user data",
+            "emotions_deleted": emotions_deleted,
+            "memory_deleted": memory_deleted,
+            "userId": user_id
+        }), 200 if success else 500
+        
+    except Exception as e:
+        # Log the exception for server-side debugging
+        print(f"[Server] Error resetting data for user {user_id}: {e}")
+        # Return a generic error message to the client
+        return jsonify({"error": "Failed to reset user data"}), 500
+
+
 if __name__ == "__main__":  # pragma: no cover
     app.run(debug=True, port=5000)
