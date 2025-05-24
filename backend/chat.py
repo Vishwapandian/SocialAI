@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import firebase_config
 import config as cfg
 import prompts as prompts
-import tools as tools
+# import tools as tools
 import limbic as limbic
 import memory as memory
 
@@ -64,66 +64,66 @@ class Chat:
         payload = {
             "system_instruction": system_instr,
             "contents":           self._history,
-            "generationConfig":   cfg.DEFAULT_GEN_CFG,
-            "tools":              [{"functionDeclarations": [tools.PINECONE_RAG_DECL, tools.WEB_SEARCH_DECL]}], # Updated to use tools
+            "generationConfig":   cfg.GEMINI_GEN_CFG,
+            # "tools":              [{"functionDeclarations": [tools.PINECONE_RAG_DECL, tools.WEB_SEARCH_DECL]}], # Updated to use tools
             # leave function_calling_config default = AUTO
         }
         response = self._post_raw(cfg.GEMINI_URL, payload)
         first_part = response["candidates"][0]["content"]["parts"][0]
 
         # ---- Did Gemini ask to call our function? ---------------------- #
-        if "functionCall" in first_part:
-            fn_call = first_part["functionCall"]
-            fn_name = fn_call["name"]
-            
-            # Execute the appropriate tool based on function name
-            if fn_name == "search_pinecone_memories":
-                tool_result = tools.search_pinecone_memories( # Updated to use tools
-                    **fn_call.get("args", {}), user_id=self.user_id
-                )
-            elif fn_name == "search_web":
-                tool_result = tools.search_web(**fn_call.get("args", {})) # Updated to use tools
-            else:
-                tool_result = {"error": f"Unknown function: {fn_name}"}
+        # if "functionCall" in first_part:
+        #     fn_call = first_part["functionCall"]
+        #     fn_name = fn_call["name"]
+        #     
+        #     # Execute the appropriate tool based on function name
+        #     if fn_name == "search_pinecone_memories":
+        #         tool_result = tools.search_pinecone_memories( # Updated to use tools
+        #             **fn_call.get("args", {}), user_id=self.user_id
+        #         )
+        #     elif fn_name == "search_web":
+        #         tool_result = tools.search_web(**fn_call.get("args", {})) # Updated to use tools
+        #     else:
+        #         tool_result = {"error": f"Unknown function: {fn_name}"}
 
-            # Gemini expects a *function response* message next
-            self._history.append({
-                "role": "model",
-                "parts": [{"functionCall": fn_call}],
-            })
+        #     # Gemini expects a *function response* message next
+        #     self._history.append({
+        #         "role": "model",
+        #         "parts": [{"functionCall": fn_call}],
+        #     })
 
-            # Determine the role for the function response part
-            function_response_role = "user"  # Default role
-            if fn_name == "search_pinecone_memories":
-                function_response_role = "memory_tool"
-            elif fn_name == "search_web":
-                function_response_role = "internet_tool"
-            # For unknown functions, tool_result is an error, and role remains "user"
+        #     # Determine the role for the function response part
+        #     function_response_role = "user"  # Default role
+        #     if fn_name == "search_pinecone_memories":
+        #         function_response_role = "memory_tool"
+        #     elif fn_name == "search_web":
+        #         function_response_role = "internet_tool"
+        #     # For unknown functions, tool_result is an error, and role remains "user"
 
-            self._history.append({
-                "role": function_response_role,
-                "parts": [{
-                    "functionResponse": {
-                        "name": fn_call["name"],
-                        "response": tool_result       # keep it JSON
-                    }
-                }],
-            })
+        #     self._history.append({
+        #         "role": function_response_role,
+        #         "parts": [{
+        #             "functionResponse": {
+        #                 "name": fn_call["name"],
+        #                 "response": tool_result       # keep it JSON
+        #             }
+        #         }],
+        #     })
 
-            # ---- 2nd request: get the *final* answer ------------------ #
-            payload = {
-                "system_instruction": system_instr,
-                "contents":           self._history,
-                "generationConfig":   cfg.DEFAULT_GEN_CFG,
-                # keep tools so model can chain if it really wants
-                "tools":              [{"functionDeclarations": [tools.PINECONE_RAG_DECL, tools.WEB_SEARCH_DECL]}], # Updated to use tools
-            }
-            response = self._post_raw(cfg.GEMINI_URL, payload)
-            reply_text = response["candidates"][0]["content"]["parts"][0]["text"]
+        #     # ---- 2nd request: get the *final* answer ------------------ #
+        #     payload = {
+        #         "system_instruction": system_instr,
+        #         "contents":           self._history,
+        #         "generationConfig":   cfg.GEMINI_GEN_CFG,
+        #         # keep tools so model can chain if it really wants
+        #         "tools":              [{"functionDeclarations": [tools.PINECONE_RAG_DECL, tools.WEB_SEARCH_DECL]}], # Updated to use tools
+        #     }
+        #     response = self._post_raw(cfg.GEMINI_URL, payload)
+        #     reply_text = response["candidates"][0]["content"]["parts"][0]["text"]
 
-            # store final reply
-            self._append("model", reply_text)
-            return {"reply": reply_text, "emotions": self._emotions.copy()}
+        #     # store final reply
+        #     self._append("model", reply_text)
+        #     return {"reply": reply_text, "emotions": self._emotions.copy()}
 
         # ---- No function call – simple path ---------------------------- #
         reply_text = first_part["text"]

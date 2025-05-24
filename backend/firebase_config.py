@@ -20,7 +20,7 @@ firebase_admin.initialize_app(cred)
 
 _db = firestore.client()
 _DEFAULT_MEMORY: Final[str] = """
-This is my very first chat with this person.
+EMPTY. This is my very first time meeting this person.
 """
 
 # ---------------------------------------------------------------------------

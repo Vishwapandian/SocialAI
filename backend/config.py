@@ -8,7 +8,7 @@ import os
 # ––– Gemini ---------------------------------------------------------------- #
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or \
     (_ for _ in ()).throw(RuntimeError("GEMINI_API_KEY not set"))
-GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-preview-05-20")
 GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 )
@@ -40,6 +40,19 @@ DEFAULT_GEN_CFG: Dict[str, Any] = {
     "maxOutputTokens":    250,
     "topP":               0.9,
     "topK":               40,
+}
+
+# ––– Gemini Main Model Generation Configuration (with thinking) ----------- #
+GEMINI_GEN_CFG: Dict[str, Any] = {
+    "stopSequences":      [],
+    "temperature":        1.2,
+    "maxOutputTokens":    250,
+    "topP":               0.9,
+    "topK":               40,
+    "thinkingConfig": {
+        "thinkingBudget": 0,
+    },
+    "responseMimeType":   "text/plain",
 }
 
 # ––– Limbic System Generation Configuration -------------------------------- #
