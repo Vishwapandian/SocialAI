@@ -33,11 +33,9 @@ Here's your current emotional state:
 """
 
 MEMORY_SUMMARY_PROMPT_TEMPLATE: str = """
-You've just finished another conversation.
+You've just finished another conversation with this person. Each interaction reveals more about who they are.
 
-Each conversation reveals more about yourself and the other person.
-
-Here is your diary so far:
+Here is your current understanding of this user:
 
 {current_memory}
 
@@ -45,7 +43,9 @@ Here is the full conversation you just had:
 
 {chat_text}
 
-Reflect on your conversation and update your diary.
+Reflect on what you've learned about them from this exchange. Did they share new facts, feelings, or preferences? Did they contradict or deepen something you already knew? Are there shifts in mood, identity, goals, or relationships worth noting?
 
-Output ONLY the full updated diary.
+Update your internal model of this person: facts about them, their personality, interests, habits, and life—based on this experience.
+
+Respond with ONLY your **fully updated understanding of this person**, rewritten from scratch to include any new insights or corrections.
 """ 

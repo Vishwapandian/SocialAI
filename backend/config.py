@@ -71,16 +71,6 @@ MEMORY_SUMMARY_GEN_CFG: Dict[str, Any] = {
     "topK":           40,
 }
 
-# ––– Pinecone --------------------------------------------------------------- #
-OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY") or \
-    (_ for _ in ()).throw(RuntimeError("OPENAI_API_KEY is not set"))
-PINECONE_API_KEY: str = os.getenv("PINECONE_API_KEY") or \
-    (_ for _ in ()).throw(RuntimeError("PINECONE_API_KEY is not set"))
-PINECONE_ENV: str = os.getenv("PINECONE_ENVIRONMENT") or \
-    (_ for _ in ()).throw(RuntimeError("PINECONE_ENVIRONMENT is not set"))
-PINECONE_INDEX_NAME: str = os.getenv("PINECONE_INDEX", "users-memory") # Renamed from PINECONE_INDEX to avoid conflict with pinecone.Index
-TOP_K_RESULTS: int = int(os.getenv("TOP_K_RESULTS", "3"))
-
 # ––– Perplexity Web Search -------------------------------------------------- #
 PERPLEXITY_API_KEY: str = os.getenv("PERPLEXITY_API_KEY") or \
     (_ for _ in ()).throw(RuntimeError("PERPLEXITY_API_KEY is not set"))

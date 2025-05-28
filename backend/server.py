@@ -154,7 +154,7 @@ def get_emotions_endpoint():
 
 @app.post("/api/reset")
 def reset_user_data():
-    """Reset user data by deleting emotions from Firebase and memory from Pinecone."""
+    """Reset user data by deleting emotions and memory from Firebase."""
     data = request.get_json(silent=True) or {}
     user_id: str | None = data.get("userId")
 
@@ -167,7 +167,7 @@ def reset_user_data():
         # Delete emotions from Firebase
         emotions_deleted = delete_user_emotions(user_id)
         
-        # Delete memory from Pinecone
+        # Delete memory from Firebase
         memory_deleted = delete_user_memory(user_id)
         
         # Check if both operations were successful
