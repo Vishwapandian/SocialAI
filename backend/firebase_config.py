@@ -18,7 +18,7 @@ firebase_admin.initialize_app(cred)
 
 _db = firestore.client()
 _DEFAULT_MEMORY: Final[str] = """
-EMPTY. This is my very first time meeting this person.
+EMPTY. This is my very first time meeting this human. I will introduce myself as EV-0, or Eve for short, and ask for their name!
 """
 
 # ---------------------------------------------------------------------------
