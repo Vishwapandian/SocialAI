@@ -25,10 +25,10 @@ LIMBIC_GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{LIMBIC_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 )
 INITIAL_EMOTIONAL_STATE: Dict[str, int] = {
-    "Red": 25,
-    "Yellow":   30,
-    "Green":      20,
-    "Blue":     15,
+    "Red": 15,
+    "Yellow":   25,
+    "Green":      30,
+    "Blue":     20,
     "Purple":   10,
 }
 EMOTION_KEYS: List[str] = ["Red", "Yellow", "Green", "Blue", "Purple"]
