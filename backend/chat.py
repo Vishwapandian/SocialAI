@@ -127,8 +127,46 @@ class Chat:
 
         # ---- No function call – simple path ---------------------------- #
         reply_text = first_part["text"]
+        
+        # Clean up the response text for better M:N messaging
+        reply_text = self._format_response_for_messaging(reply_text)
+        
         self._append("model", reply_text)
         return {"reply": reply_text, "emotions": self._emotions.copy()}
+
+    def _format_response_for_messaging(self, response: str) -> str:
+        """
+        Format the AI response to be more suitable for M:N messaging.
+        This can include breaking up long responses, adding natural breaks, etc.
+        """
+        # Remove excessive whitespace and normalize line breaks
+        response = response.strip()
+        
+        # Replace multiple consecutive newlines with single newlines
+        import re
+        response = re.sub(r'\n{3,}', '\n\n', response)
+        response = re.sub(r'\n{2,}', '\n', response)
+        
+        # If response is very long (> 200 chars) and has no line breaks, try to add some
+        if len(response) > 200 and '\n' not in response:
+            # Look for natural break points like sentences ending with punctuation
+            sentences = re.split(r'(?<=[.!?])\s+', response)
+            if len(sentences) > 1:
+                # Group sentences into chunks of reasonable length
+                chunks = []
+                current_chunk = ""
+                for sentence in sentences:
+                    if len(current_chunk + sentence) < 150:
+                        current_chunk += sentence + " "
+                    else:
+                        if current_chunk:
+                            chunks.append(current_chunk.strip())
+                        current_chunk = sentence + " "
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                response = "\n".join(chunks)
+        
+        return response
 
     # ------------------------------------------------------------ #
     # Memory summarisation (unchanged)
