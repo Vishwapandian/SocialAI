@@ -6,6 +6,61 @@ import prompts as prompts
 
 # Emotion related constants are in cfg (INITIAL_EMOTIONAL_STATE, EMOTION_KEYS, LIMBIC_MODEL_NAME, LIMBIC_GEMINI_URL)
 
+def parse_drift_values(response_text: str) -> Dict[str, int] | None:
+    """Parses the drift values from the LLM into a dictionary.
+    Expects a comma-separated string of integers (can be positive or negative).
+    """
+    try:
+        parts = response_text.strip().split(',')
+        if len(parts) != len(cfg.EMOTION_KEYS):
+            print(f"[Limbic] Drift parsing failed: Expected {len(cfg.EMOTION_KEYS)} values, got {len(parts)}. Response: '{response_text}'")
+            return None
+
+        int_values = [int(p.strip()) for p in parts]
+
+        parsed_drifts: Dict[str, int] = {}
+        for i, key in enumerate(cfg.EMOTION_KEYS):
+            parsed_drifts[key] = int_values[i]
+        
+        return parsed_drifts
+
+    except ValueError as e:
+        print(f"[Limbic] Drift parsing failed: Invalid integer value. Error: {e}. Response: '{response_text}'")
+        return None
+    except Exception as e: # Catch any other unexpected errors during parsing
+        print(f"[Limbic] Unexpected error during drift parsing: {e}. Response: '{response_text}'")
+        return None
+
+def apply_emotional_drift(current_emotions: Dict[str, int], drift_values: Dict[str, int]) -> Dict[str, int]:
+    """Applies drift values to current emotional state and normalizes to sum to 100.
+    Ensures no emotion goes below 0.
+    """
+    # Apply drift values
+    new_emotions = {}
+    for key in cfg.EMOTION_KEYS:
+        new_value = current_emotions[key] + drift_values.get(key, 0)
+        # Ensure no emotion goes below 0
+        new_emotions[key] = max(0, new_value)
+    
+    # Normalize to sum to 100
+    total = sum(new_emotions.values())
+    if total > 0:
+        # Scale proportionally to sum to 100
+        for key in cfg.EMOTION_KEYS:
+            new_emotions[key] = round((new_emotions[key] / total) * 100)
+        
+        # Handle rounding errors - ensure sum is exactly 100
+        current_sum = sum(new_emotions.values())
+        if current_sum != 100:
+            # Add/subtract the difference to the largest emotion
+            largest_emotion = max(cfg.EMOTION_KEYS, key=lambda k: new_emotions[k])
+            new_emotions[largest_emotion] += (100 - current_sum)
+    else:
+        # If all emotions would be 0, reset to initial state
+        new_emotions = cfg.INITIAL_EMOTIONAL_STATE.copy()
+    
+    return new_emotions
+
 def parse_emotions(response_text: str) -> Dict[str, int] | None:
     """Parses the emotion string from the LLM into a dictionary.
     Expects a comma-separated string of 6 integers.
@@ -37,7 +92,7 @@ def update_emotions_state(
     post_raw_func: Callable[..., Dict[str, Any]],
     exclude_tool_outputs_for_emotions: bool = True
 ) -> Dict[str, int]:
-    """Calls the limbic system LLM to update the current emotional state.
+    """Calls the limbic system LLM to get drift values and updates the current emotional state.
     Returns the new emotional state if successful, otherwise the original state.
     """
     conversation_state = full_chat_text_func(exclude_tool_outputs=exclude_tool_outputs_for_emotions)
@@ -59,12 +114,14 @@ def update_emotions_state(
         response_json = post_raw_func(cfg.LIMBIC_GEMINI_URL, payload)
         if response_json and "candidates" in response_json and response_json["candidates"]:
             limbic_response_text = response_json["candidates"][0]["content"]["parts"][0]["text"]
-            new_emotions = parse_emotions(limbic_response_text)
-            if new_emotions:
-                print(f"[Limbic] Emotions updated: {new_emotions}")
+            drift_values = parse_drift_values(limbic_response_text)
+            if drift_values:
+                new_emotions = apply_emotional_drift(current_emotions, drift_values)
+                print(f"[Limbic] Drift values: {drift_values}")
+                print(f"[Limbic] Emotions updated: {current_emotions} -> {new_emotions}")
                 return new_emotions
             else:
-                print("[Limbic] Failed to parse emotions from limbic system response.")
+                print("[Limbic] Failed to parse drift values from limbic system response.")
         else:
             print("[Limbic] Invalid or empty response from limbic system.")
     except requests.exceptions.RequestException as e:

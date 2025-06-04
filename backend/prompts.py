@@ -2,7 +2,7 @@ from __future__ import annotations
 
 LIMBIC_SYSTEM_PROMPT_TEMPLATE: str = """
 You are a Human Limbic System.
-Based on the following conversation, update your emotional state.
+Based on the following conversation, determine how your emotional state should drift.
 
 The emotional state consists of Red, Yellow, Green, Blue, and Purple.
 These are percentages, and their values must sum to 100.
@@ -40,10 +40,15 @@ Current Emotional State (as comma-separated integers for: {emotion_keys_list}):
 {current_emotional_state}
 
 Output format:
-Output only the updated emotional state, exactly as a comma-separated list of five integers representing {emotion_keys_list}.
-The sum must be 100.
-Example:
-50,10,10,15,15
+Output only the emotional drift values as a comma-separated list of integers representing the change for each emotion ({emotion_keys_list}).
+These can be positive (increase) or negative (decrease) values.
+Keep drift values moderate (typically between -20 and +20) to represent realistic emotional changes.
+The sum of drift values does not need to equal zero, as the system will normalize the final state.
+
+Example drift output:
+5,-2,0,3,-6
+
+This would increase Red by 5, decrease Yellow by 2, keep Green the same, increase Blue by 3, and decrease Purple by 6.
 """
 
 SYSTEM_TEMPLATE = """
