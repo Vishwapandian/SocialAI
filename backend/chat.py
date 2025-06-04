@@ -9,6 +9,7 @@ import prompts as prompts
 # import tools as tools
 import limbic as limbic
 import memory as memory
+import time
 
 load_dotenv()
 
@@ -29,6 +30,9 @@ class Chat:
         else:
             self._emotions = cfg.INITIAL_EMOTIONAL_STATE.copy()
 
+        # Track when emotions were last updated for homeostasis
+        self._last_emotion_update = time.time()
+        
         self._history: List[Dict[str, Any]] = []    # chron. list of Gemini‑style parts
         self._http     = requests.Session()
 
@@ -39,6 +43,25 @@ class Chat:
     def history(self) -> List[Dict[str, Any]]:
         return self._history
 
+    def get_current_emotions(self) -> Dict[str, int]:
+        """Get current emotions with homeostasis drift applied."""
+        # Apply homeostasis drift based on time elapsed
+        current_emotions = limbic.apply_homeostasis_drift(self._emotions, self._last_emotion_update)
+        
+        # Update stored emotions and timestamp if drift occurred
+        if current_emotions != self._emotions:
+            self._emotions = current_emotions
+            self._last_emotion_update = time.time()
+            
+            # Save updated emotions to Firebase if user_id exists
+            if self.user_id:
+                try:
+                    firebase_config.update_user_emotions(self.user_id, self._emotions)
+                except Exception as e:
+                    print(f"[Chat] Failed to save homeostasis emotions: {e}")
+        
+        return self._emotions.copy()
+
     def send(self, message: str) -> Dict[str, Any]:
         """
         Send *message* to Gemini.  Gemini may respond with a function call
@@ -46,6 +69,9 @@ class Chat:
         function, we execute it, feed the result back to Gemini, and return
         the model's final reply.
         """
+        # ---- Apply homeostasis drift before processing message ---- #
+        self._emotions = self.get_current_emotions()
+        
         # ---- build user + memory‑aware system prompt ------------------ #
         system_instr = self._system_instruction()
         self._append("user", message)                            # tentatively add
@@ -57,6 +83,8 @@ class Chat:
                 full_chat_text_func=self._full_chat_text,
                 post_raw_func=self._post_raw
             )
+            # Update timestamp after LLM emotion update
+            self._last_emotion_update = time.time()
         except Exception as e:
             print(f"[Chat] Emotion update failed: {e}") # Log and continue
 

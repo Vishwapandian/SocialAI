@@ -137,13 +137,24 @@ def save_survey():
 def get_emotions_endpoint():
     data = request.get_json(silent=True) or {}
     user_id: str | None = data.get("userId")
+    session_id: str | None = data.get("sessionId")
 
     if not user_id:
         return jsonify({"error": "User ID is required"}), 400
 
     try:
-        from firebase_config import get_user_emotions # Import here
-        emotions = get_user_emotions(user_id)
+        # If we have an active session, get emotions with homeostasis applied
+        if session_id and session_id in _chat_sessions:
+            chat = _chat_sessions[session_id]
+            emotions = chat.get_current_emotions()
+        else:
+            # No active session, get from Firebase and apply homeostasis based on last update
+            from firebase_config import get_user_emotions
+            emotions = get_user_emotions(user_id)
+            
+            # For standalone emotion requests, we don't have access to last update time
+            # so we just return the stored emotions
+        
         return jsonify({"emotions": emotions, "userId": user_id}), 200
     except Exception as e:
         # Log the exception for server-side debugging

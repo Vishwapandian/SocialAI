@@ -33,6 +33,11 @@ INITIAL_EMOTIONAL_STATE: Dict[str, int] = {
 }
 EMOTION_KEYS: List[str] = ["Red", "Yellow", "Green", "Blue", "Purple"]
 
+# ––– Homeostasis Configuration ------------------------------------------ #
+HOMEOSTASIS_DRIFT_RATE: float = 0.05  # θ (theta) - drift rate toward baseline per timestep
+HOMEOSTASIS_NOISE_SCALE: float = 2.0   # σ (sigma) - noise scale for random fluctuations
+HOMEOSTASIS_INTERVAL: int = 30         # Seconds between homeostasis updates (shorter for smoother changes)
+
 # ––– Default Generation Configuration -------------------------------------- #
 DEFAULT_GEN_CFG: Dict[str, Any] = {
     "stopSequences":      [],
