@@ -58,7 +58,7 @@ class Chat:
                 try:
                     firebase_config.update_user_emotions(self.user_id, self._emotions)
                 except Exception as e:
-                    print(f"[Chat] Failed to save homeostasis emotions: {e}")
+                    print(f"[Chat] Emotion update failed: {e}")
         
         return self._emotions.copy()
 
@@ -201,7 +201,6 @@ class Chat:
     # ------------------------------------------------------------ #
     def summarize(self) -> bool:
         if not self.user_id:
-            print("[Chat] Cannot summarize memory without user_id.")
             return False
         return memory.summarize_memory( # Updated to call the function from memory.py
             user_id=self.user_id,

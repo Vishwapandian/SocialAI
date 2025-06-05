@@ -37,7 +37,6 @@ def summarize_memory(
             post_raw_func=post_raw_func
         )
         firebase_config.update_user_memory(user_id, updated_user_mem)
-        print(f"[Memory] Memory updated for user {user_id}")
         return True
     except Exception as exc:               # noqa: BLE001
         print(f"[Memory] Memory update failed for user {user_id}: {exc}")

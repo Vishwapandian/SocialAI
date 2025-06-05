@@ -16,7 +16,6 @@ def parse_drift_values(response_text: str) -> Dict[str, int] | None:
     try:
         parts = response_text.strip().split(',')
         if len(parts) != len(cfg.EMOTION_KEYS):
-            print(f"[Limbic] Drift parsing failed: Expected {len(cfg.EMOTION_KEYS)} values, got {len(parts)}. Response: '{response_text}'")
             return None
 
         int_values = [int(p.strip()) for p in parts]
@@ -27,11 +26,9 @@ def parse_drift_values(response_text: str) -> Dict[str, int] | None:
         
         return parsed_drifts
 
-    except ValueError as e:
-        print(f"[Limbic] Drift parsing failed: Invalid integer value. Error: {e}. Response: '{response_text}'")
+    except ValueError:
         return None
-    except Exception as e: # Catch any other unexpected errors during parsing
-        print(f"[Limbic] Unexpected error during drift parsing: {e}. Response: '{response_text}'")
+    except Exception:
         return None
 
 def apply_emotional_drift(current_emotions: Dict[str, int], drift_values: Dict[str, int]) -> Dict[str, int]:
@@ -71,7 +68,6 @@ def parse_emotions(response_text: str) -> Dict[str, int] | None:
     try:
         parts = response_text.strip().split(',')
         if len(parts) != len(cfg.EMOTION_KEYS):
-            print(f"[Limbic] Emotion parsing failed: Expected {len(cfg.EMOTION_KEYS)} values, got {len(parts)}. Response: '{response_text}'")
             return None
 
         int_values = [int(p.strip()) for p in parts]
@@ -82,11 +78,9 @@ def parse_emotions(response_text: str) -> Dict[str, int] | None:
         
         return parsed_emotions
 
-    except ValueError as e:
-        print(f"[Limbic] Emotion parsing failed: Invalid integer value. Error: {e}. Response: '{response_text}'")
+    except ValueError:
         return None
-    except Exception as e: # Catch any other unexpected errors during parsing
-        print(f"[Limbic] Unexpected error during emotion parsing: {e}. Response: '{response_text}'")
+    except Exception:
         return None
 
 def update_emotions_state(
@@ -120,8 +114,6 @@ def update_emotions_state(
             drift_values = parse_drift_values(limbic_response_text)
             if drift_values:
                 new_emotions = apply_emotional_drift(current_emotions, drift_values)
-                print(f"[Limbic] Drift values: {drift_values}")
-                print(f"[Limbic] Emotions updated: {current_emotions} -> {new_emotions}")
                 return new_emotions
             else:
                 print("[Limbic] Failed to parse drift values from limbic system response.")
@@ -193,50 +185,45 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
         
         # Log the stochastic step (only for the first step to avoid spam)
         if step == 0 and num_steps > 0:
-            print(f"[Limbic] Stochastic step applied ({num_steps} steps total)")
             for key in cfg.EMOTION_KEYS:
                 change_info = step_changes[key]
-                print(f"  {key}: drift={change_info['drift']:+.2f}, noise={change_info['noise']:+.2f}, total={change_info['change']:+.2f}")
-    
-    # Normalize to ensure emotions sum to 100
-    total = sum(float_emotions.values())
-    if total > 0:
-        # Scale proportionally to sum to 100
-        normalized_emotions = {}
-        for key in cfg.EMOTION_KEYS:
-            normalized_emotions[key] = (float_emotions[key] / total) * 100
-        
-        # Convert back to integers and handle rounding
-        int_emotions = {}
-        for key in cfg.EMOTION_KEYS:
-            int_emotions[key] = round(normalized_emotions[key])
-        
-        # Handle rounding errors - ensure sum is exactly 100
-        current_sum = sum(int_emotions.values())
-        if current_sum != 100:
-            # Add/subtract the difference to the emotion closest to its float value
-            differences = {}
-            for key in cfg.EMOTION_KEYS:
-                differences[key] = abs(normalized_emotions[key] - int_emotions[key])
-            
-            # Find the emotion with the smallest rounding error to adjust
-            adjustment_key = min(differences.keys(), key=lambda k: differences[k])
-            int_emotions[adjustment_key] += (100 - current_sum)
-            
-            # Ensure the adjustment doesn't make the emotion negative
-            if int_emotions[adjustment_key] < 0:
-                int_emotions[adjustment_key] = 0
-                # Redistribute the deficit across other emotions
-                deficit = 100 - sum(int_emotions.values())
-                if deficit > 0:
-                    # Add to the largest emotion
-                    largest_key = max(cfg.EMOTION_KEYS, key=lambda k: int_emotions[k])
-                    int_emotions[largest_key] += deficit
         
         # Log the final normalized result
-        print(f"[Limbic] Homeostasis: {dict(current_emotions)} -> {int_emotions}")
-        
-        return int_emotions
-    else:
-        # If all emotions would be 0 (shouldn't happen with minimum), reset to initial state
-        return cfg.INITIAL_EMOTIONAL_STATE.copy() 
+        total = sum(float_emotions.values())
+        if total > 0:
+            # Scale proportionally to sum to 100
+            normalized_emotions = {}
+            for key in cfg.EMOTION_KEYS:
+                normalized_emotions[key] = (float_emotions[key] / total) * 100
+            
+            # Convert back to integers and handle rounding
+            int_emotions = {}
+            for key in cfg.EMOTION_KEYS:
+                int_emotions[key] = round(normalized_emotions[key])
+            
+            # Handle rounding errors - ensure sum is exactly 100
+            current_sum = sum(int_emotions.values())
+            if current_sum != 100:
+                # Add/subtract the difference to the emotion closest to its float value
+                differences = {}
+                for key in cfg.EMOTION_KEYS:
+                    differences[key] = abs(normalized_emotions[key] - int_emotions[key])
+                
+                # Find the emotion with the smallest rounding error to adjust
+                adjustment_key = min(differences.keys(), key=lambda k: differences[k])
+                int_emotions[adjustment_key] += (100 - current_sum)
+                
+                # Ensure the adjustment doesn't make the emotion negative
+                if int_emotions[adjustment_key] < 0:
+                    int_emotions[adjustment_key] = 0
+                    # Redistribute the deficit across other emotions
+                    deficit = 100 - sum(int_emotions.values())
+                    if deficit > 0:
+                        # Add to the largest emotion
+                        largest_key = max(cfg.EMOTION_KEYS, key=lambda k: int_emotions[k])
+                        int_emotions[largest_key] += deficit
+            
+            return int_emotions
+        else:
+            # If all emotions would be 0 (shouldn't happen with minimum), reset to initial state
+            return cfg.INITIAL_EMOTIONAL_STATE.copy() 
