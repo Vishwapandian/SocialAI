@@ -237,13 +237,13 @@ class Chat:
             role = item["role"]
 
             if "text" in part:
-                role_tag = "User" if role == "user" else "Puck"
+                role_tag = "User" if role == "user" else "Self"
                 lines.append(f"{role_tag}: {part['text']}")
             elif "functionCall" in part:  # This will have role: "model"
                 fc = part["functionCall"]
                 tool_name = fc.get('name', 'unknown_tool')
                 query = fc.get('args', {}).get('query', 'N/A')
-                lines.append(f"Puck (system): Initiating tool call to '{tool_name}' with query: '{query}'.")
+                lines.append(f"Self (system): Initiating tool call to '{tool_name}' with query: '{query}'.")
             elif "functionResponse" in part:  # Role could be "user", "memory_tool", or "internet_tool"
                 if exclude_tool_outputs and role in ["memory_tool", "internet_tool"]:
                     continue # Skip these tool outputs if requested
