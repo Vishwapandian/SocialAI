@@ -56,8 +56,8 @@ def apply_emotional_drift(current_emotions: Dict[str, int], drift_values: Dict[s
             largest_emotion = max(cfg.EMOTION_KEYS, key=lambda k: new_emotions[k])
             new_emotions[largest_emotion] += (100 - current_sum)
     else:
-        # If all emotions would be 0, reset to initial state
-        new_emotions = cfg.INITIAL_EMOTIONAL_STATE.copy()
+        # If all emotions would be 0, reset to base state
+        new_emotions = cfg.BASE_EMOTIONAL_STATE.copy()
     
     return new_emotions
 
@@ -163,7 +163,7 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
         
         for key in cfg.EMOTION_KEYS:
             current_value = float_emotions[key]
-            baseline_value = float(cfg.INITIAL_EMOTIONAL_STATE[key])
+            baseline_value = float(cfg.BASE_EMOTIONAL_STATE[key])
             
             # Ornstein-Uhlenbeck process: E(t+1) = E(t) + θ*(μ - E(t)) + σ*N(0,1)
             drift_term = cfg.HOMEOSTASIS_DRIFT_RATE * (baseline_value - current_value)
@@ -225,5 +225,5 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
             
             return int_emotions
         else:
-            # If all emotions would be 0 (shouldn't happen with minimum), reset to initial state
-            return cfg.INITIAL_EMOTIONAL_STATE.copy() 
+            # If all emotions would be 0 (shouldn't happen with minimum), reset to base state
+            return cfg.BASE_EMOTIONAL_STATE.copy() 

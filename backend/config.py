@@ -31,12 +31,19 @@ INITIAL_EMOTIONAL_STATE: Dict[str, int] = {
     "Blue":     10,
     "Purple":   10,
 }
+BASE_EMOTIONAL_STATE: Dict[str, int] = {
+    "Red": 5,
+    "Yellow": 20,
+    "Green": 30,
+    "Blue": 40,
+    "Purple": 5,
+}
 EMOTION_KEYS: List[str] = ["Red", "Yellow", "Green", "Blue", "Purple"]
 
 # ––– Homeostasis Configuration ------------------------------------------ #
-HOMEOSTASIS_DRIFT_RATE: float = 0.05  # θ (theta) - drift rate toward baseline per timestep
-HOMEOSTASIS_NOISE_SCALE: float = 2.0   # σ (sigma) - noise scale for random fluctuations
-HOMEOSTASIS_INTERVAL: int = 30         # Seconds between homeostasis updates (shorter for smoother changes)
+HOMEOSTASIS_DRIFT_RATE: float = 0.35   # θ (theta) - drift rate toward baseline per timestep
+HOMEOSTASIS_NOISE_SCALE: float = 1.5   # σ (sigma) - noise scale for random fluctuations
+HOMEOSTASIS_INTERVAL: int = 15         # Seconds between homeostasis updates (shorter for smoother changes)
 
 # ––– Default Generation Configuration -------------------------------------- #
 DEFAULT_GEN_CFG: Dict[str, Any] = {
