@@ -32,38 +32,20 @@ def parse_drift_values(response_text: str) -> Dict[str, int] | None:
         return None
 
 def apply_emotional_drift(current_emotions: Dict[str, int], drift_values: Dict[str, int]) -> Dict[str, int]:
-    """Applies drift values to current emotional state and normalizes to sum to 100.
-    Ensures no emotion goes below 0.
+    """Applies drift values to current emotional state within [-100, 100] range.
+    No normalization needed since emotions are independent bipolar scales.
     """
-    # Apply drift values
     new_emotions = {}
     for key in cfg.EMOTION_KEYS:
         new_value = current_emotions[key] + drift_values.get(key, 0)
-        # Ensure no emotion goes below 0
-        new_emotions[key] = max(0, new_value)
-    
-    # Normalize to sum to 100
-    total = sum(new_emotions.values())
-    if total > 0:
-        # Scale proportionally to sum to 100
-        for key in cfg.EMOTION_KEYS:
-            new_emotions[key] = round((new_emotions[key] / total) * 100)
-        
-        # Handle rounding errors - ensure sum is exactly 100
-        current_sum = sum(new_emotions.values())
-        if current_sum != 100:
-            # Add/subtract the difference to the largest emotion
-            largest_emotion = max(cfg.EMOTION_KEYS, key=lambda k: new_emotions[k])
-            new_emotions[largest_emotion] += (100 - current_sum)
-    else:
-        # If all emotions would be 0, reset to base state
-        new_emotions = cfg.BASE_EMOTIONAL_STATE.copy()
+        # Clamp values to [-100, 100] range
+        new_emotions[key] = max(-100, min(100, new_value))
     
     return new_emotions
 
 def parse_emotions(response_text: str) -> Dict[str, int] | None:
     """Parses the emotion string from the LLM into a dictionary.
-    Expects a comma-separated string of 6 integers.
+    Expects a comma-separated string of 4 integers in range [-100, 100].
     """
     try:
         parts = response_text.strip().split(',')
@@ -71,6 +53,11 @@ def parse_emotions(response_text: str) -> Dict[str, int] | None:
             return None
 
         int_values = [int(p.strip()) for p in parts]
+        
+        # Validate range
+        for value in int_values:
+            if value < -100 or value > 100:
+                return None
 
         parsed_emotions: Dict[str, int] = {}
         for i, key in enumerate(cfg.EMOTION_KEYS):
@@ -127,13 +114,13 @@ def update_emotions_state(
     return current_emotions # Return original emotions if update failed 
 
 def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: float) -> Dict[str, int]:
-    """Applies stochastic homeostasis drift toward baseline emotions using Ornstein-Uhlenbeck process.
+    """Applies stochastic homeostasis drift toward neutral (0) for all bipolar emotions using Ornstein-Uhlenbeck process.
     
     E(t+1) = E(t) + θ*(μ - E(t)) + σ*N(0,1)
     
     Where:
     - E(t) = current emotional value
-    - μ = baseline value (center it drifts toward) 
+    - μ = baseline value (0 for all emotions)
     - θ = drift rate (pull toward baseline)
     - σ = noise scale (volatility)
     - N(0,1) = standard normal random value
@@ -149,7 +136,6 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
         return current_emotions.copy()
     
     # Apply stochastic updates for each completed interval
-    # For multiple intervals, we apply the process iteratively
     new_emotions = current_emotions.copy()
     
     # Convert to float for calculations
@@ -163,7 +149,7 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
         
         for key in cfg.EMOTION_KEYS:
             current_value = float_emotions[key]
-            baseline_value = float(cfg.BASE_EMOTIONAL_STATE[key])
+            baseline_value = float(cfg.BASE_EMOTIONAL_STATE[key])  # Should be 0 for all
             
             # Ornstein-Uhlenbeck process: E(t+1) = E(t) + θ*(μ - E(t)) + σ*N(0,1)
             drift_term = cfg.HOMEOSTASIS_DRIFT_RATE * (baseline_value - current_value)
@@ -171,8 +157,8 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
             
             new_value = current_value + drift_term + noise_term
             
-            # Ensure no negative values (emotions can't be negative)
-            temp_emotions[key] = max(0.1, new_value)
+            # Clamp to [-100, 100] range
+            temp_emotions[key] = max(-100.0, min(100.0, new_value))
             
             # Track the change for logging
             step_changes[key] = {
@@ -187,43 +173,12 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
         if step == 0 and num_steps > 0:
             for key in cfg.EMOTION_KEYS:
                 change_info = step_changes[key]
-        
-        # Log the final normalized result
-        total = sum(float_emotions.values())
-        if total > 0:
-            # Scale proportionally to sum to 100
-            normalized_emotions = {}
-            for key in cfg.EMOTION_KEYS:
-                normalized_emotions[key] = (float_emotions[key] / total) * 100
-            
-            # Convert back to integers and handle rounding
-            int_emotions = {}
-            for key in cfg.EMOTION_KEYS:
-                int_emotions[key] = round(normalized_emotions[key])
-            
-            # Handle rounding errors - ensure sum is exactly 100
-            current_sum = sum(int_emotions.values())
-            if current_sum != 100:
-                # Add/subtract the difference to the emotion closest to its float value
-                differences = {}
-                for key in cfg.EMOTION_KEYS:
-                    differences[key] = abs(normalized_emotions[key] - int_emotions[key])
-                
-                # Find the emotion with the smallest rounding error to adjust
-                adjustment_key = min(differences.keys(), key=lambda k: differences[k])
-                int_emotions[adjustment_key] += (100 - current_sum)
-                
-                # Ensure the adjustment doesn't make the emotion negative
-                if int_emotions[adjustment_key] < 0:
-                    int_emotions[adjustment_key] = 0
-                    # Redistribute the deficit across other emotions
-                    deficit = 100 - sum(int_emotions.values())
-                    if deficit > 0:
-                        # Add to the largest emotion
-                        largest_key = max(cfg.EMOTION_KEYS, key=lambda k: int_emotions[k])
-                        int_emotions[largest_key] += deficit
-            
-            return int_emotions
-        else:
-            # If all emotions would be 0 (shouldn't happen with minimum), reset to base state
-            return cfg.BASE_EMOTIONAL_STATE.copy() 
+    
+    # Convert back to integers
+    int_emotions = {}
+    for key in cfg.EMOTION_KEYS:
+        int_emotions[key] = round(float_emotions[key])
+        # Ensure final values are within bounds
+        int_emotions[key] = max(-100, min(100, int_emotions[key]))
+    
+    return int_emotions 
