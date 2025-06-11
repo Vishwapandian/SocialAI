@@ -126,7 +126,7 @@ def update_emotions_state(
     
     return current_emotions # Return original emotions if update failed 
 
-def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: float) -> Dict[str, int]:
+def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: float, base_emotions: Dict[str, int] = None) -> Dict[str, int]:
     """Applies stochastic homeostasis drift toward baseline emotions using Ornstein-Uhlenbeck process.
     
     E(t+1) = E(t) + θ*(μ - E(t)) + σ*N(0,1)
@@ -138,6 +138,9 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
     - σ = noise scale (volatility)
     - N(0,1) = standard normal random value
     """
+    # Use provided base emotions or fall back to default
+    if base_emotions is None:
+        base_emotions = cfg.BASE_EMOTIONAL_STATE
     current_time = time.time()
     elapsed_seconds = current_time - last_update_time
     
@@ -163,7 +166,7 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
         
         for key in cfg.EMOTION_KEYS:
             current_value = float_emotions[key]
-            baseline_value = float(cfg.BASE_EMOTIONAL_STATE[key])
+            baseline_value = float(base_emotions[key])
             
             # Ornstein-Uhlenbeck process: E(t+1) = E(t) + θ*(μ - E(t)) + σ*N(0,1)
             drift_term = cfg.HOMEOSTASIS_DRIFT_RATE * (baseline_value - current_value)
@@ -226,4 +229,4 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
             return int_emotions
         else:
             # If all emotions would be 0 (shouldn't happen with minimum), reset to base state
-            return cfg.BASE_EMOTIONAL_STATE.copy() 
+            return base_emotions.copy() 

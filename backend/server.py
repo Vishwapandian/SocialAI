@@ -6,6 +6,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from chat import Chat
 import user_tracking
+import time
 
 # ---------------------------------------------------------------------------
 # Flask setup
@@ -173,7 +174,7 @@ def reset_user_data():
         return jsonify({"error": "User ID is required"}), 400
 
     try:
-        from firebase_config import delete_user_emotions, delete_user_memory
+        from firebase_config import delete_user_emotions, delete_user_memory, delete_user_base_emotions
         
         # Delete emotions from Firebase
         emotions_deleted = delete_user_emotions(user_id)
@@ -181,14 +182,18 @@ def reset_user_data():
         # Delete memory from Firebase
         memory_deleted = delete_user_memory(user_id)
         
-        # Check if both operations were successful
-        success = emotions_deleted and memory_deleted
+        # Delete base emotions from Firebase
+        base_emotions_deleted = delete_user_base_emotions(user_id)
+        
+        # Check if all operations were successful
+        success = emotions_deleted and memory_deleted and base_emotions_deleted
         
         return jsonify({
             "success": success,
             "message": "User data reset successfully" if success else "Failed to reset some user data",
             "emotions_deleted": emotions_deleted,
             "memory_deleted": memory_deleted,
+            "base_emotions_deleted": base_emotions_deleted,
             "userId": user_id
         }), 200 if success else 500
         
@@ -197,6 +202,177 @@ def reset_user_data():
         print(f"[Server] Error resetting data for user {user_id}: {e}")
         # Return a generic error message to the client
         return jsonify({"error": "Failed to reset user data"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Configuration API endpoints
+# 
+# These endpoints allow users to manually configure their AI's:
+# - Memory: GET/PUT /api/config/memory?userId=<user_id>
+# - Current Emotions: GET/PUT /api/config/emotions?userId=<user_id>  
+# - Base Emotions (homeostasis target): GET/PUT /api/config/base-emotions?userId=<user_id>
+# - All Config: GET /api/config/all?userId=<user_id>
+#
+# All PUT requests require the userId in the request body as well.
+# Emotions must be dictionaries with keys: Red, Yellow, Green, Blue, Purple
+# and values that are integers summing to 100.
+# ---------------------------------------------------------------------------
+@app.route("/api/config/memory", methods=["GET", "PUT"])
+def manage_memory():
+    """Get or update user memory."""
+    user_id: str | None = request.args.get("userId") if request.method == "GET" else request.get_json(silent=True, force=True).get("userId")
+    
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    try:
+        from firebase_config import get_user_memory, update_user_memory
+        
+        if request.method == "GET":
+            memory = get_user_memory(user_id)
+            return jsonify({"memory": memory, "userId": user_id}), 200
+            
+        elif request.method == "PUT":
+            data = request.get_json(silent=True) or {}
+            new_memory = data.get("memory")
+            
+            if new_memory is None:
+                return jsonify({"error": "Memory content is required"}), 400
+            
+            update_user_memory(user_id, new_memory)
+            return jsonify({"success": True, "message": "Memory updated successfully", "userId": user_id}), 200
+            
+    except Exception as e:
+        print(f"[Server] Error managing memory for user {user_id}: {e}")
+        return jsonify({"error": "Failed to manage memory"}), 500
+
+
+@app.route("/api/config/emotions", methods=["GET", "PUT"])
+def manage_current_emotions():
+    """Get or update user's current emotional state."""
+    user_id: str | None = request.args.get("userId") if request.method == "GET" else request.get_json(silent=True, force=True).get("userId")
+    
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    try:
+        from firebase_config import get_user_emotions, update_user_emotions
+        
+        if request.method == "GET":
+            emotions = get_user_emotions(user_id)
+            return jsonify({"emotions": emotions, "userId": user_id}), 200
+            
+        elif request.method == "PUT":
+            data = request.get_json(silent=True) or {}
+            new_emotions = data.get("emotions")
+            
+            if not new_emotions or not isinstance(new_emotions, dict):
+                return jsonify({"error": "Valid emotions dictionary is required"}), 400
+            
+            # Validate emotion structure
+            from config import EMOTION_KEYS
+            if not all(key in new_emotions for key in EMOTION_KEYS):
+                return jsonify({"error": f"All emotion keys required: {EMOTION_KEYS}"}), 400
+            
+            if not all(isinstance(new_emotions[key], int) for key in EMOTION_KEYS):
+                return jsonify({"error": "All emotion values must be integers"}), 400
+            
+            # Validate that emotions sum to 100
+            total = sum(new_emotions.values())
+            if total != 100:
+                return jsonify({"error": "Emotions must sum to 100"}), 400
+            
+            update_user_emotions(user_id, new_emotions)
+            
+            # Update active session if it exists
+            for session_id, chat in _chat_sessions.items():
+                if chat.user_id == user_id:
+                    chat._emotions = new_emotions.copy()
+                    chat._last_emotion_update = time.time()
+                    break
+            
+            return jsonify({"success": True, "message": "Current emotions updated successfully", "userId": user_id}), 200
+            
+    except Exception as e:
+        print(f"[Server] Error managing current emotions for user {user_id}: {e}")
+        return jsonify({"error": "Failed to manage current emotions"}), 500
+
+
+@app.route("/api/config/base-emotions", methods=["GET", "PUT"])
+def manage_base_emotions():
+    """Get or update user's base emotional state."""
+    user_id: str | None = request.args.get("userId") if request.method == "GET" else request.get_json(silent=True, force=True).get("userId")
+    
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    try:
+        from firebase_config import get_user_base_emotions, update_user_base_emotions
+        
+        if request.method == "GET":
+            base_emotions = get_user_base_emotions(user_id)
+            return jsonify({"baseEmotions": base_emotions, "userId": user_id}), 200
+            
+        elif request.method == "PUT":
+            data = request.get_json(silent=True) or {}
+            new_base_emotions = data.get("baseEmotions")
+            
+            if not new_base_emotions or not isinstance(new_base_emotions, dict):
+                return jsonify({"error": "Valid base emotions dictionary is required"}), 400
+            
+            # Validate emotion structure
+            from config import EMOTION_KEYS
+            if not all(key in new_base_emotions for key in EMOTION_KEYS):
+                return jsonify({"error": f"All emotion keys required: {EMOTION_KEYS}"}), 400
+            
+            if not all(isinstance(new_base_emotions[key], int) for key in EMOTION_KEYS):
+                return jsonify({"error": "All emotion values must be integers"}), 400
+            
+            # Validate that emotions sum to 100
+            total = sum(new_base_emotions.values())
+            if total != 100:
+                return jsonify({"error": "Base emotions must sum to 100"}), 400
+            
+            update_user_base_emotions(user_id, new_base_emotions)
+            
+            # Update active session if it exists
+            for session_id, chat in _chat_sessions.items():
+                if chat.user_id == user_id:
+                    chat._base_emotions = new_base_emotions.copy()
+                    break
+            
+            return jsonify({"success": True, "message": "Base emotions updated successfully", "userId": user_id}), 200
+            
+    except Exception as e:
+        print(f"[Server] Error managing base emotions for user {user_id}: {e}")
+        return jsonify({"error": "Failed to manage base emotions"}), 500
+
+
+@app.route("/api/config/all", methods=["GET"])
+def get_all_config():
+    """Get all user configuration data at once."""
+    user_id: str | None = request.args.get("userId")
+    
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    try:
+        from firebase_config import get_user_memory, get_user_emotions, get_user_base_emotions
+        
+        memory = get_user_memory(user_id)
+        emotions = get_user_emotions(user_id)
+        base_emotions = get_user_base_emotions(user_id)
+        
+        return jsonify({
+            "memory": memory,
+            "emotions": emotions,
+            "baseEmotions": base_emotions,
+            "userId": user_id
+        }), 200
+        
+    except Exception as e:
+        print(f"[Server] Error getting all config for user {user_id}: {e}")
+        return jsonify({"error": "Failed to get user configuration"}), 500
 
 
 if __name__ == "__main__":  # pragma: no cover

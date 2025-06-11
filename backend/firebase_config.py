@@ -62,6 +62,43 @@ def delete_user_emotions(user_id: str) -> bool:
         return False
 
 # ---------------------------------------------------------------------------
+# Public helpers for base emotional state using Firestore
+# ---------------------------------------------------------------------------
+def get_user_base_emotions(user_id: str) -> dict[str, int]:
+    """Return base emotional state for *user_id*, fetching from Firestore, creating default if necessary."""
+    user_doc_ref = _db.collection("user_data").document(user_id)
+    user_doc = user_doc_ref.get()
+    if user_doc.exists:
+        data = user_doc.to_dict()
+        if data and "base_emotions" in data:
+            return data["base_emotions"]
+    
+    # If no base emotions found, use default and save it
+    from config import BASE_EMOTIONAL_STATE # Import here to avoid circular dependency
+    default_base_emotions = BASE_EMOTIONAL_STATE.copy()
+    user_doc_ref.set({"base_emotions": default_base_emotions}, merge=True)
+    return default_base_emotions
+
+def update_user_base_emotions(user_id: str, base_emotions: dict[str, int]) -> None:
+    """Update base emotions for *user_id* in Firestore."""
+    user_doc_ref = _db.collection("user_data").document(user_id)
+    user_doc_ref.set({"base_emotions": base_emotions}, merge=True)
+
+def delete_user_base_emotions(user_id: str) -> bool:
+    """Delete base emotions for *user_id* from Firestore."""
+    try:
+        user_doc_ref = _db.collection("user_data").document(user_id)
+        # Check if document exists first
+        user_doc = user_doc_ref.get()
+        if user_doc.exists:
+            # Delete just the base_emotions field, keeping other potential data
+            user_doc_ref.update({"base_emotions": firestore.DELETE_FIELD})
+        return True
+    except Exception as e:
+        print(f"[Firebase] Error deleting base emotions for user {user_id}: {e}")
+        return False
+
+# ---------------------------------------------------------------------------
 # Public helpers for user memory using Firebase/Firestore
 # ---------------------------------------------------------------------------
 def get_user_memory(user_id: str) -> str:

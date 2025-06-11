@@ -27,8 +27,10 @@ class Chat:
         self.session_id = session_id
         if user_id:
             self._emotions = firebase_config.get_user_emotions(user_id)
+            self._base_emotions = firebase_config.get_user_base_emotions(user_id)
         else:
             self._emotions = cfg.INITIAL_EMOTIONAL_STATE.copy()
+            self._base_emotions = cfg.BASE_EMOTIONAL_STATE.copy()
 
         # Track when emotions were last updated for homeostasis
         self._last_emotion_update = time.time()
@@ -46,7 +48,7 @@ class Chat:
     def get_current_emotions(self) -> Dict[str, int]:
         """Get current emotions with homeostasis drift applied."""
         # Apply homeostasis drift based on time elapsed
-        current_emotions = limbic.apply_homeostasis_drift(self._emotions, self._last_emotion_update)
+        current_emotions = limbic.apply_homeostasis_drift(self._emotions, self._last_emotion_update, self._base_emotions)
         
         # Update stored emotions and timestamp if drift occurred
         if current_emotions != self._emotions:
