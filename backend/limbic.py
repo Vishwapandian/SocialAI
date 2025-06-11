@@ -87,11 +87,16 @@ def update_emotions_state(
     current_emotions: Dict[str, int],
     full_chat_text_func: Callable[..., str], 
     post_raw_func: Callable[..., Dict[str, Any]],
+    sensitivity: int = None,
     exclude_tool_outputs_for_emotions: bool = True
 ) -> Dict[str, int]:
     """Calls the limbic system LLM to get drift values and updates the current emotional state.
     Returns the new emotional state if successful, otherwise the original state.
     """
+    # Use provided sensitivity or fall back to default
+    if sensitivity is None:
+        sensitivity = cfg.DEFAULT_SENSITIVITY
+        
     conversation_state = full_chat_text_func(exclude_tool_outputs=exclude_tool_outputs_for_emotions)
     
     current_emotional_state_str = ",".join([str(current_emotions[key]) for key in cfg.EMOTION_KEYS])
@@ -99,7 +104,8 @@ def update_emotions_state(
     prompt = prompts.LIMBIC_SYSTEM_PROMPT_TEMPLATE.format(
         conversation_state=conversation_state,
         current_emotional_state=current_emotional_state_str,
-        emotion_keys_list=", ".join(cfg.EMOTION_KEYS)
+        emotion_keys_list=", ".join(cfg.EMOTION_KEYS),
+        sensitivity=sensitivity
     )
 
     payload = {
@@ -124,9 +130,14 @@ def update_emotions_state(
     except Exception as e:
         print(f"[Limbic] Error processing limbic system response: {e}")
     
-    return current_emotions # Return original emotions if update failed 
+    return current_emotions # Return original emotions if update failed
 
-def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: float, base_emotions: Dict[str, int] = None) -> Dict[str, int]:
+def apply_homeostasis_drift(
+    current_emotions: Dict[str, int], 
+    last_update_time: float, 
+    base_emotions: Dict[str, int] = None,
+    sensitivity: int = None
+) -> Dict[str, int]:
     """Applies stochastic homeostasis drift toward baseline emotions using Ornstein-Uhlenbeck process.
     
     E(t+1) = E(t) + θ*(μ - E(t)) + σ*N(0,1)
@@ -134,13 +145,22 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
     Where:
     - E(t) = current emotional value
     - μ = baseline value (center it drifts toward) 
-    - θ = drift rate (pull toward baseline)
-    - σ = noise scale (volatility)
+    - θ = drift rate (pull toward baseline) - calculated from sensitivity
+    - σ = noise scale (volatility) - calculated from sensitivity
     - N(0,1) = standard normal random value
     """
     # Use provided base emotions or fall back to default
     if base_emotions is None:
         base_emotions = cfg.BASE_EMOTIONAL_STATE
+    
+    # Use provided sensitivity or fall back to default
+    if sensitivity is None:
+        sensitivity = cfg.DEFAULT_SENSITIVITY
+    
+    # Calculate dynamic parameters based on sensitivity
+    drift_rate = sensitivity / 100.0  # sensitivity / 100 (e.g., 35 -> 0.35)
+    noise_scale = sensitivity / 10.0  # sensitivity / 10 (e.g., 35 -> 3.5)
+    
     current_time = time.time()
     elapsed_seconds = current_time - last_update_time
     
@@ -169,8 +189,8 @@ def apply_homeostasis_drift(current_emotions: Dict[str, int], last_update_time: 
             baseline_value = float(base_emotions[key])
             
             # Ornstein-Uhlenbeck process: E(t+1) = E(t) + θ*(μ - E(t)) + σ*N(0,1)
-            drift_term = cfg.HOMEOSTASIS_DRIFT_RATE * (baseline_value - current_value)
-            noise_term = cfg.HOMEOSTASIS_NOISE_SCALE * random.gauss(0, 1)
+            drift_term = drift_rate * (baseline_value - current_value)
+            noise_term = noise_scale * random.gauss(0, 1)
             
             new_value = current_value + drift_term + noise_term
             

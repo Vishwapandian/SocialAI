@@ -174,7 +174,7 @@ def reset_user_data():
         return jsonify({"error": "User ID is required"}), 400
 
     try:
-        from firebase_config import delete_user_emotions, delete_user_memory, delete_user_base_emotions
+        from firebase_config import delete_user_emotions, delete_user_memory, delete_user_base_emotions, delete_user_sensitivity
         
         # Delete emotions from Firebase
         emotions_deleted = delete_user_emotions(user_id)
@@ -185,8 +185,11 @@ def reset_user_data():
         # Delete base emotions from Firebase
         base_emotions_deleted = delete_user_base_emotions(user_id)
         
+        # Delete sensitivity from Firebase
+        sensitivity_deleted = delete_user_sensitivity(user_id)
+        
         # Check if all operations were successful
-        success = emotions_deleted and memory_deleted and base_emotions_deleted
+        success = emotions_deleted and memory_deleted and base_emotions_deleted and sensitivity_deleted
         
         return jsonify({
             "success": success,
@@ -194,6 +197,7 @@ def reset_user_data():
             "emotions_deleted": emotions_deleted,
             "memory_deleted": memory_deleted,
             "base_emotions_deleted": base_emotions_deleted,
+            "sensitivity_deleted": sensitivity_deleted,
             "userId": user_id
         }), 200 if success else 500
         
@@ -211,11 +215,13 @@ def reset_user_data():
 # - Memory: GET/PUT /api/config/memory?userId=<user_id>
 # - Current Emotions: GET/PUT /api/config/emotions?userId=<user_id>  
 # - Base Emotions (homeostasis target): GET/PUT /api/config/base-emotions?userId=<user_id>
+# - Sensitivity (0-100): GET/PUT /api/config/sensitivity?userId=<user_id>
 # - All Config: GET /api/config/all?userId=<user_id>
 #
 # All PUT requests require the userId in the request body as well.
 # Emotions must be dictionaries with keys: Red, Yellow, Green, Blue, Purple
 # and values that are integers summing to 100.
+# Sensitivity must be an integer between 0 and 100 (affects emotion drift rates).
 # ---------------------------------------------------------------------------
 @app.route("/api/config/memory", methods=["GET", "PUT"])
 def manage_memory():
@@ -357,22 +363,67 @@ def get_all_config():
         return jsonify({"error": "User ID is required"}), 400
     
     try:
-        from firebase_config import get_user_memory, get_user_emotions, get_user_base_emotions
+        from firebase_config import get_user_memory, get_user_emotions, get_user_base_emotions, get_user_sensitivity
         
         memory = get_user_memory(user_id)
         emotions = get_user_emotions(user_id)
         base_emotions = get_user_base_emotions(user_id)
+        sensitivity = get_user_sensitivity(user_id)
         
         return jsonify({
             "memory": memory,
             "emotions": emotions,
             "baseEmotions": base_emotions,
+            "sensitivity": sensitivity,
             "userId": user_id
         }), 200
         
     except Exception as e:
         print(f"[Server] Error getting all config for user {user_id}: {e}")
         return jsonify({"error": "Failed to get user configuration"}), 500
+
+
+@app.route("/api/config/sensitivity", methods=["GET", "PUT"])
+def manage_sensitivity():
+    """Get or update user's sensitivity setting."""
+    user_id: str | None = request.args.get("userId") if request.method == "GET" else request.get_json(silent=True, force=True).get("userId")
+    
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    try:
+        from firebase_config import get_user_sensitivity, update_user_sensitivity
+        
+        if request.method == "GET":
+            sensitivity = get_user_sensitivity(user_id)
+            return jsonify({"sensitivity": sensitivity, "userId": user_id}), 200
+            
+        elif request.method == "PUT":
+            data = request.get_json(silent=True) or {}
+            new_sensitivity = data.get("sensitivity")
+            
+            if new_sensitivity is None:
+                return jsonify({"error": "Sensitivity value is required"}), 400
+            
+            if not isinstance(new_sensitivity, int):
+                return jsonify({"error": "Sensitivity must be an integer"}), 400
+            
+            if not 0 <= new_sensitivity <= 100:
+                return jsonify({"error": "Sensitivity must be between 0 and 100"}), 400
+            
+            update_user_sensitivity(user_id, new_sensitivity)
+            
+            # Update active session if it exists
+            for session_id, chat in _chat_sessions.items():
+                if chat.user_id == user_id:
+                    chat._sensitivity = new_sensitivity
+                    break
+            
+            return jsonify({"success": True, "message": "Sensitivity updated successfully", "userId": user_id}), 200
+            
+    except Exception as e:
+        print(f"[Server] Error managing sensitivity for user {user_id}: {e}")
+        return jsonify({"error": "Failed to manage sensitivity"}), 500
 
 
 if __name__ == "__main__":  # pragma: no cover

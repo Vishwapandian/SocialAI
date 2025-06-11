@@ -43,7 +43,7 @@ Current Emotional State (as comma-separated integers for: {emotion_keys_list}):
 Output format:
 Output only the emotional drift values as a comma-separated list of integers representing the change for each emotion ({emotion_keys_list}).
 These can be positive (increase) or negative (decrease) values.
-Keep drift values moderate (typically between -20 and +20) to represent realistic emotional changes.
+Keep drift values between -{sensitivity} and +{sensitivity} to represent emotional changes.
 The sum of drift values does not need to equal zero, as the system will normalize the final state.
 
 Example drift output:

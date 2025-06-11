@@ -45,6 +45,9 @@ HOMEOSTASIS_DRIFT_RATE: float = 0.35   # θ (theta) - drift rate toward baseline
 HOMEOSTASIS_NOISE_SCALE: float = 1.5   # σ (sigma) - noise scale for random fluctuations
 HOMEOSTASIS_INTERVAL: int = 15         # Seconds between homeostasis updates (shorter for smoother changes)
 
+# ––– Sensitivity Configuration ------------------------------------------ #
+DEFAULT_SENSITIVITY: int = 35          # Default sensitivity value (0-100)
+
 # ––– Default Generation Configuration -------------------------------------- #
 DEFAULT_GEN_CFG: Dict[str, Any] = {
     "stopSequences":      [],

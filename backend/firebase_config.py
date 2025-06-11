@@ -132,3 +132,39 @@ def delete_user_memory(user_id: str) -> bool:
     except Exception as e:
         print(f"[Firebase] Error deleting memory for user {user_id}: {e}")
         return False
+
+# ---------------------------------------------------------------------------
+# Public helpers for user sensitivity using Firestore
+# ---------------------------------------------------------------------------
+def get_user_sensitivity(user_id: str) -> int:
+    """Return sensitivity for *user_id*, fetching from Firestore, creating default if necessary."""
+    user_doc_ref = _db.collection("user_data").document(user_id)
+    user_doc = user_doc_ref.get()
+    if user_doc.exists:
+        data = user_doc.to_dict()
+        if data and "sensitivity" in data:
+            return data["sensitivity"]
+    
+    # If no sensitivity found, use default and save it
+    from config import DEFAULT_SENSITIVITY # Import here to avoid circular dependency
+    user_doc_ref.set({"sensitivity": DEFAULT_SENSITIVITY}, merge=True)
+    return DEFAULT_SENSITIVITY
+
+def update_user_sensitivity(user_id: str, sensitivity: int) -> None:
+    """Update sensitivity for *user_id* in Firestore."""
+    user_doc_ref = _db.collection("user_data").document(user_id)
+    user_doc_ref.set({"sensitivity": sensitivity}, merge=True)
+
+def delete_user_sensitivity(user_id: str) -> bool:
+    """Delete sensitivity for *user_id* from Firestore."""
+    try:
+        user_doc_ref = _db.collection("user_data").document(user_id)
+        # Check if document exists first
+        user_doc = user_doc_ref.get()
+        if user_doc.exists:
+            # Delete just the sensitivity field, keeping other potential data
+            user_doc_ref.update({"sensitivity": firestore.DELETE_FIELD})
+        return True
+    except Exception as e:
+        print(f"[Firebase] Error deleting sensitivity for user {user_id}: {e}")
+        return False
