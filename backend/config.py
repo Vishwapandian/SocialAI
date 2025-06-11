@@ -24,27 +24,25 @@ LIMBIC_MODEL_NAME: str = "gemini-2.0-flash-lite"
 LIMBIC_GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{LIMBIC_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 )
-
-# ––– Hybrid Bipolar Emotion Model ------------------------------------------ #
-EMOTION_KEYS: List[str] = ["Sadness_Joy", "Disgust_Trust", "Fear_Anger", "Anticipation_Surprise"]
-
 INITIAL_EMOTIONAL_STATE: Dict[str, int] = {
-    "Sadness_Joy": 10,          # Slightly positive (joy)
-    "Disgust_Trust": 5,         # Slightly positive (trust)
-    "Fear_Anger": -5,           # Slightly negative (fear)
-    "Anticipation_Surprise": 0, # Neutral
+    "Red": 25,
+    "Yellow":   45,
+    "Green":      10,
+    "Blue":     10,
+    "Purple":   10,
 }
-
 BASE_EMOTIONAL_STATE: Dict[str, int] = {
-    "Sadness_Joy": 0,           # Neutral baseline
-    "Disgust_Trust": 0,         # Neutral baseline
-    "Fear_Anger": 0,            # Neutral baseline
-    "Anticipation_Surprise": 0, # Neutral baseline
+    "Red": 5,
+    "Yellow": 20,
+    "Green": 30,
+    "Blue": 40,
+    "Purple": 5,
 }
+EMOTION_KEYS: List[str] = ["Red", "Yellow", "Green", "Blue", "Purple"]
 
 # ––– Homeostasis Configuration ------------------------------------------ #
 HOMEOSTASIS_DRIFT_RATE: float = 0.35   # θ (theta) - drift rate toward baseline per timestep
-HOMEOSTASIS_NOISE_SCALE: float = 2.5   # σ (sigma) - noise scale for random fluctuations (increased for wider range)
+HOMEOSTASIS_NOISE_SCALE: float = 1.5   # σ (sigma) - noise scale for random fluctuations
 HOMEOSTASIS_INTERVAL: int = 15         # Seconds between homeostasis updates (shorter for smoother changes)
 
 # ––– Default Generation Configuration -------------------------------------- #
