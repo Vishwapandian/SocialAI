@@ -223,12 +223,14 @@ class Chat:
     # ------------------------------------------------------------ #
     def _system_instruction(self) -> Dict[str, Any]:
         user_mem = firebase_config.get_user_memory(self.user_id) if self.user_id else ""
+        custom_instructions = firebase_config.get_user_custom_instructions(self.user_id) if self.user_id else "N/A"
         emotional_state_str = "\n".join(
             [f"{emotion}: {value}" for emotion, value in self._emotions.items()]
         )
         return {"parts": [{"text": prompts.SYSTEM_TEMPLATE.format(
             user_memory=user_mem,
-            emotional_state=emotional_state_str
+            emotional_state=emotional_state_str,
+            custom_instructions=custom_instructions
         )}]}
 
     def _post_raw(self, url:str, payload: Dict[str, Any]) -> Dict[str, Any]:

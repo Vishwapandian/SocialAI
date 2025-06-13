@@ -174,7 +174,7 @@ def reset_user_data():
         return jsonify({"error": "User ID is required"}), 400
 
     try:
-        from firebase_config import delete_user_emotions, delete_user_memory, delete_user_base_emotions, delete_user_sensitivity
+        from firebase_config import delete_user_emotions, delete_user_memory, delete_user_base_emotions, delete_user_sensitivity, delete_user_custom_instructions
         
         # Delete emotions from Firebase
         emotions_deleted = delete_user_emotions(user_id)
@@ -188,8 +188,11 @@ def reset_user_data():
         # Delete sensitivity from Firebase
         sensitivity_deleted = delete_user_sensitivity(user_id)
         
+        # Delete custom instructions from Firebase
+        custom_instructions_deleted = delete_user_custom_instructions(user_id)
+        
         # Check if all operations were successful
-        success = emotions_deleted and memory_deleted and base_emotions_deleted and sensitivity_deleted
+        success = emotions_deleted and memory_deleted and base_emotions_deleted and sensitivity_deleted and custom_instructions_deleted
         
         return jsonify({
             "success": success,
@@ -198,6 +201,7 @@ def reset_user_data():
             "memory_deleted": memory_deleted,
             "base_emotions_deleted": base_emotions_deleted,
             "sensitivity_deleted": sensitivity_deleted,
+            "custom_instructions_deleted": custom_instructions_deleted,
             "userId": user_id
         }), 200 if success else 500
         
@@ -363,24 +367,56 @@ def get_all_config():
         return jsonify({"error": "User ID is required"}), 400
     
     try:
-        from firebase_config import get_user_memory, get_user_emotions, get_user_base_emotions, get_user_sensitivity
+        from firebase_config import get_user_memory, get_user_emotions, get_user_base_emotions, get_user_sensitivity, get_user_custom_instructions
         
         memory = get_user_memory(user_id)
         emotions = get_user_emotions(user_id)
         base_emotions = get_user_base_emotions(user_id)
         sensitivity = get_user_sensitivity(user_id)
+        custom_instructions = get_user_custom_instructions(user_id)
         
         return jsonify({
             "memory": memory,
             "emotions": emotions,
             "baseEmotions": base_emotions,
             "sensitivity": sensitivity,
+            "customInstructions": custom_instructions,
             "userId": user_id
         }), 200
         
     except Exception as e:
         print(f"[Server] Error getting all config for user {user_id}: {e}")
         return jsonify({"error": "Failed to get user configuration"}), 500
+
+
+@app.route("/api/config/custom-instructions", methods=["GET", "PUT"])
+def manage_custom_instructions():
+    """Get or update user's custom instructions."""
+    user_id: str | None = request.args.get("userId") if request.method == "GET" else request.get_json(silent=True, force=True).get("userId")
+    
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    try:
+        from firebase_config import get_user_custom_instructions, update_user_custom_instructions
+        
+        if request.method == "GET":
+            custom_instructions = get_user_custom_instructions(user_id)
+            return jsonify({"customInstructions": custom_instructions, "userId": user_id}), 200
+            
+        elif request.method == "PUT":
+            data = request.get_json(silent=True) or {}
+            new_instructions = data.get("customInstructions")
+            
+            if new_instructions is None:
+                return jsonify({"error": "Custom instructions content is required"}), 400
+            
+            update_user_custom_instructions(user_id, new_instructions)
+            return jsonify({"success": True, "message": "Custom instructions updated successfully", "userId": user_id}), 200
+            
+    except Exception as e:
+        print(f"[Server] Error managing custom instructions for user {user_id}: {e}")
+        return jsonify({"error": "Failed to manage custom instructions"}), 500
 
 
 @app.route("/api/config/sensitivity", methods=["GET", "PUT"])
