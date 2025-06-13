@@ -48,6 +48,9 @@ HOMEOSTASIS_INTERVAL: int = 15         # Seconds between homeostasis updates (sh
 # ––– Sensitivity Configuration ------------------------------------------ #
 DEFAULT_SENSITIVITY: int = 35          # Default sensitivity value (0-100)
 
+# ––– Custom Instructions Configuration ---------------------------------- #
+DEFAULT_CUSTOM_INSTRUCTIONS: str = "N/A"
+
 # ––– Default Generation Configuration -------------------------------------- #
 DEFAULT_GEN_CFG: Dict[str, Any] = {
     "stopSequences":      [],
