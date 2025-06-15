@@ -7,6 +7,7 @@ from flask_cors import CORS
 from chat import Chat
 import user_tracking
 import time
+from datetime import datetime  # Added for timestamping personas
 
 # ---------------------------------------------------------------------------
 # Flask setup
@@ -174,7 +175,14 @@ def reset_user_data():
         return jsonify({"error": "User ID is required"}), 400
 
     try:
-        from firebase_config import delete_user_emotions, delete_user_memory, delete_user_base_emotions, delete_user_sensitivity, delete_user_custom_instructions
+        from firebase_config import (
+            delete_user_emotions,
+            delete_user_memory,
+            delete_user_base_emotions,
+            delete_user_sensitivity,
+            delete_user_custom_instructions,
+            delete_all_personas,
+        )
         
         # Delete emotions from Firebase
         emotions_deleted = delete_user_emotions(user_id)
@@ -191,8 +199,13 @@ def reset_user_data():
         # Delete custom instructions from Firebase
         custom_instructions_deleted = delete_user_custom_instructions(user_id)
         
+        # Delete all personas
+        personas_deleted = delete_all_personas(user_id)
+        
         # Check if all operations were successful
-        success = emotions_deleted and memory_deleted and base_emotions_deleted and sensitivity_deleted and custom_instructions_deleted
+        success = (
+            emotions_deleted and memory_deleted and base_emotions_deleted and sensitivity_deleted and custom_instructions_deleted and personas_deleted
+        )
         
         return jsonify({
             "success": success,
@@ -202,6 +215,7 @@ def reset_user_data():
             "base_emotions_deleted": base_emotions_deleted,
             "sensitivity_deleted": sensitivity_deleted,
             "custom_instructions_deleted": custom_instructions_deleted,
+            "personas_deleted": personas_deleted,
             "userId": user_id
         }), 200 if success else 500
         
@@ -460,6 +474,153 @@ def manage_sensitivity():
     except Exception as e:
         print(f"[Server] Error managing sensitivity for user {user_id}: {e}")
         return jsonify({"error": "Failed to manage sensitivity"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Persona CRUD API
+# ---------------------------------------------------------------------------
+
+@app.route("/api/personas", methods=["GET", "POST"])
+def personas_collection():
+    """List or create personas scoped to a user."""
+    try:
+        from firebase_config import (
+            get_all_personas,
+            add_persona,
+        )
+        from config import EMOTION_KEYS
+
+        if request.method == "GET":
+            user_id: str | None = request.args.get("userId")
+            if not user_id:
+                return jsonify({"error": "User ID is required"}), 400
+            personas = get_all_personas(user_id)
+            return jsonify({"personas": personas, "userId": user_id}), 200
+
+        # POST – create persona
+        data = request.get_json(silent=True) or {}
+        user_id: str | None = data.get("userId")
+        if not user_id:
+            return jsonify({"error": "User ID is required"}), 400
+
+        name: str | None = data.get("name")
+        base_emotions: dict | None = data.get("baseEmotions")
+        sensitivity: int | None = data.get("sensitivity")
+        custom_instructions: str | None = data.get("customInstructions")
+
+        # Basic validation
+        if not name:
+            return jsonify({"error": "Persona name is required"}), 400
+        if not base_emotions or not isinstance(base_emotions, dict):
+            return jsonify({"error": "baseEmotions dictionary is required"}), 400
+        if not all(key in base_emotions for key in EMOTION_KEYS):
+            return jsonify({"error": f"All emotion keys required: {EMOTION_KEYS}"}), 400
+        if not all(isinstance(base_emotions[key], int) for key in EMOTION_KEYS):
+            return jsonify({"error": "Emotion values must be integers"}), 400
+        if sum(base_emotions.values()) != 100:
+            return jsonify({"error": "baseEmotions must sum to 100"}), 400
+        if sensitivity is None or not isinstance(sensitivity, int) or not 0 <= sensitivity <= 100:
+            return jsonify({"error": "sensitivity must be an integer between 0 and 100"}), 400
+        if custom_instructions is None:
+            custom_instructions = ""
+
+        persona_data = {
+            "name": name,
+            "baseEmotions": base_emotions,
+            "sensitivity": sensitivity,
+            "customInstructions": custom_instructions,
+            "lastUsed": datetime.utcnow().isoformat(),  # Track creation time
+        }
+        persona_id = add_persona(user_id, persona_data)
+        persona_data["id"] = persona_id
+        return jsonify({"success": True, "persona": persona_data, "userId": user_id}), 201
+
+    except Exception as e:
+        print(f"[Server] Error in personas_collection: {e}")
+        return jsonify({"error": "Failed to process personas request"}), 500
+
+
+@app.route("/api/personas/<persona_id>", methods=["GET", "PUT", "DELETE"])
+def personas_document(persona_id: str):
+    """Retrieve, update, or delete a persona for a user."""
+    try:
+        from firebase_config import (
+            get_persona,
+            update_persona,
+            delete_persona,
+        )
+        from config import EMOTION_KEYS
+
+        # Determine user ID (query for GET/DELETE, body for PUT)
+        if request.method in ["GET", "DELETE"]:
+            user_id: str | None = request.args.get("userId")
+        else:  # PUT can have userId in body or query
+            json_payload = request.get_json(silent=True) or {}
+            user_id: str | None = json_payload.get("userId") or request.args.get("userId")
+
+        if not user_id:
+            return jsonify({"error": "User ID is required"}), 400
+
+        if request.method == "GET":
+            persona = get_persona(user_id, persona_id)
+            if not persona:
+                return jsonify({"error": "Persona not found"}), 404
+            return jsonify({"persona": persona, "userId": user_id}), 200
+
+        if request.method == "DELETE":
+            deleted = delete_persona(user_id, persona_id)
+            if not deleted:
+                return jsonify({"error": "Failed to delete persona"}), 500
+            return jsonify({"success": True, "personaId": persona_id, "userId": user_id}), 200
+
+        # PUT – update persona
+        data = request.get_json(silent=True) or {}
+        update_payload: dict = {}
+
+        if "name" in data:
+            if not data["name"]:
+                return jsonify({"error": "name cannot be empty"}), 400
+            update_payload["name"] = data["name"]
+
+        if "baseEmotions" in data:
+            base_emotions = data["baseEmotions"]
+            if not base_emotions or not isinstance(base_emotions, dict):
+                return jsonify({"error": "baseEmotions must be a dict"}), 400
+            if not all(key in base_emotions for key in EMOTION_KEYS):
+                return jsonify({"error": f"All emotion keys required: {EMOTION_KEYS}"}), 400
+            if not all(isinstance(base_emotions[key], int) for key in EMOTION_KEYS):
+                return jsonify({"error": "Emotion values must be integers"}), 400
+            if sum(base_emotions.values()) != 100:
+                return jsonify({"error": "baseEmotions must sum to 100"}), 400
+            update_payload["baseEmotions"] = base_emotions
+
+        if "sensitivity" in data:
+            sensitivity = data["sensitivity"]
+            if not isinstance(sensitivity, int) or not 0 <= sensitivity <= 100:
+                return jsonify({"error": "sensitivity must be an integer between 0 and 100"}), 400
+            update_payload["sensitivity"] = sensitivity
+
+        if "customInstructions" in data:
+            update_payload["customInstructions"] = data["customInstructions"]
+
+        if "lastUsed" in data and data["lastUsed"] is not None:
+            if not isinstance(data["lastUsed"], str):
+                return jsonify({"error": "lastUsed must be an ISO8601 string"}), 400
+            update_payload["lastUsed"] = data["lastUsed"]
+
+        if not update_payload:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        success = update_persona(user_id, persona_id, update_payload)
+        if not success:
+            return jsonify({"error": "Failed to update persona"}), 500
+
+        persona = get_persona(user_id, persona_id)
+        return jsonify({"success": True, "persona": persona, "userId": user_id}), 200
+
+    except Exception as e:
+        print(f"[Server] Error in personas_document: {e}")
+        return jsonify({"error": "Failed to process persona request"}), 500
 
 
 if __name__ == "__main__":  # pragma: no cover

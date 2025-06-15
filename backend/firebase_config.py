@@ -4,6 +4,7 @@ from typing import Final
 import firebase_admin
 from dotenv import load_dotenv
 from firebase_admin import credentials, firestore
+from datetime import datetime  # For ISO timestamps
 
 # ---------------------------------------------------------------------------
 # Initialise Firebase
@@ -203,4 +204,130 @@ def delete_user_sensitivity(user_id: str) -> bool:
         return True
     except Exception as e:
         print(f"[Firebase] Error deleting sensitivity for user {user_id}: {e}")
+        return False
+
+# ---------------------------------------------------------------------------
+# Personas helpers and defaults (CRUD) – per-user scope
+# ---------------------------------------------------------------------------
+
+# Default personas available to every *new* user
+from config import BASE_EMOTIONAL_STATE, DEFAULT_SENSITIVITY, DEFAULT_CUSTOM_INSTRUCTIONS  # local import to avoid reorder issues
+
+_DEFAULT_PERSONAS: list[dict] = [
+    {
+        "name": "Default Auri",
+        "baseEmotions": BASE_EMOTIONAL_STATE,
+        "sensitivity": DEFAULT_SENSITIVITY,
+        "customInstructions": DEFAULT_CUSTOM_INSTRUCTIONS,
+    },
+    {
+        "name": "Cheerful Buddy",
+        "baseEmotions": {
+            "Red": 5,
+            "Yellow": 50,
+            "Green": 20,
+            "Blue": 10,
+            "Purple": 15,
+        },
+        "sensitivity": 50,
+        "customInstructions": "You are an energetic and upbeat AI friend who always stays positive and encourages the user.",
+    },
+    {
+        "name": "Calm Sage",
+        "baseEmotions": {
+            "Red": 5,
+            "Yellow": 10,
+            "Green": 35,
+            "Blue": 45,
+            "Purple": 5,
+        },
+        "sensitivity": 25,
+        "customInstructions": "You are a calm and thoughtful guide who offers measured, reflective answers.",
+    },
+]
+
+
+# ---------------------------- Internal helpers -----------------------------
+
+def _persona_doc(user_id: str, persona_id: str):
+    """Return reference to a single persona doc for *user_id*."""
+    return _db.collection("user_data").document(user_id).collection("personas").document(persona_id)
+
+
+def _personas_collection(user_id: str):
+    return _db.collection("user_data").document(user_id).collection("personas")
+
+
+def _ensure_default_personas_for_user(user_id: str) -> None:
+    """Seed defaults to the user's persona sub-collection if empty."""
+    col_ref = _personas_collection(user_id)
+    docs = list(col_ref.limit(1).stream())
+    if docs:
+        return  # already has at least one persona
+
+    # Seed default personas; mark the first ("Default Auri") as most recently used
+    now_iso = datetime.utcnow().isoformat()
+    for idx, persona in enumerate(_DEFAULT_PERSONAS):
+        try:
+            persona_data = persona.copy()
+            persona_data["lastUsed"] = now_iso if idx == 0 else None
+            col_ref.document().set(persona_data)
+        except Exception as e:
+            print(f"[Firebase] Failed to seed default persona '{persona['name']}' for user {user_id}: {e}")
+
+
+# ---------------------------- CRUD operations -----------------------------
+
+def get_all_personas(user_id: str) -> list[dict]:
+    _ensure_default_personas_for_user(user_id)
+    docs = _personas_collection(user_id).stream()
+    personas: list[dict] = []
+    for doc in docs:
+        data = doc.to_dict() or {}
+        data["id"] = doc.id
+        personas.append(data)
+    return personas
+
+
+def get_persona(user_id: str, persona_id: str) -> dict | None:
+    doc = _persona_doc(user_id, persona_id).get()
+    if not doc.exists:
+        return None
+    data = doc.to_dict() or {}
+    data["id"] = doc.id
+    return data
+
+
+def add_persona(user_id: str, persona_data: dict) -> str:
+    doc_ref = _personas_collection(user_id).document()
+    doc_ref.set(persona_data)
+    return doc_ref.id
+
+
+def update_persona(user_id: str, persona_id: str, persona_data: dict) -> bool:
+    try:
+        _persona_doc(user_id, persona_id).set(persona_data, merge=True)
+        return True
+    except Exception as e:
+        print(f"[Firebase] Error updating persona {persona_id} for user {user_id}: {e}")
+        return False
+
+
+def delete_persona(user_id: str, persona_id: str) -> bool:
+    try:
+        _persona_doc(user_id, persona_id).delete()
+        return True
+    except Exception as e:
+        print(f"[Firebase] Error deleting persona {persona_id} for user {user_id}: {e}")
+        return False
+
+# Bulk delete all personas for user (used during reset)
+def delete_all_personas(user_id: str) -> bool:
+    try:
+        docs = _personas_collection(user_id).stream()
+        for doc in docs:
+            doc.reference.delete()
+        return True
+    except Exception as e:
+        print(f"[Firebase] Error deleting all personas for user {user_id}: {e}")
         return False
