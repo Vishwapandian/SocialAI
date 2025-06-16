@@ -266,7 +266,7 @@ def _ensure_default_personas_for_user(user_id: str) -> None:
         return  # already has at least one persona
 
     # Seed default personas; mark the first ("Default Auri") as most recently used
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
     for idx, persona in enumerate(_DEFAULT_PERSONAS):
         try:
             persona_data = persona.copy()

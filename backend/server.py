@@ -529,7 +529,7 @@ def personas_collection():
             "baseEmotions": base_emotions,
             "sensitivity": sensitivity,
             "customInstructions": custom_instructions,
-            "lastUsed": datetime.utcnow().isoformat(),  # Track creation time
+            "lastUsed": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",  # Track creation time
         }
         persona_id = add_persona(user_id, persona_data)
         persona_data["id"] = persona_id
