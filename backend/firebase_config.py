@@ -6,6 +6,15 @@ from dotenv import load_dotenv
 from firebase_admin import credentials, firestore
 from datetime import datetime  # For ISO timestamps
 
+from config import (
+    BASE_EMOTIONAL_STATE,
+    DEFAULT_CUSTOM_INSTRUCTIONS,
+    DEFAULT_MEMORY,
+    DEFAULT_PERSONAS,
+    DEFAULT_SENSITIVITY,
+    INITIAL_EMOTIONAL_STATE,
+)
+
 # ---------------------------------------------------------------------------
 # Initialise Firebase
 # ---------------------------------------------------------------------------
@@ -18,9 +27,6 @@ cred = credentials.Certificate(_SERVICE_ACCOUNT)
 firebase_admin.initialize_app(cred)
 
 _db = firestore.client()
-_DEFAULT_MEMORY: Final[str] = """
-EMPTY. This is my very first time meeting my human. I will introduce myself as Auri the AI Aura, and ask for the human's name!
-"""
 
 # ---------------------------------------------------------------------------
 # Public helpers for user emotions using Firestore
@@ -35,7 +41,6 @@ def get_user_emotions(user_id: str) -> dict[str, int]:
             return data["emotions"]
     
     # If no emotions found, use initial default and save it
-    from config import INITIAL_EMOTIONAL_STATE # Import here to avoid circular dependency
     default_emotions = INITIAL_EMOTIONAL_STATE.copy()
     # Ensure the collection/document exists before trying to set (though set with merge=True often handles this)
     # For clarity, ensuring user_doc_ref exists or creating it if using .set without merge=True initially.
@@ -75,7 +80,6 @@ def get_user_base_emotions(user_id: str) -> dict[str, int]:
             return data["base_emotions"]
     
     # If no base emotions found, use default and save it
-    from config import BASE_EMOTIONAL_STATE # Import here to avoid circular dependency
     default_base_emotions = BASE_EMOTIONAL_STATE.copy()
     user_doc_ref.set({"base_emotions": default_base_emotions}, merge=True)
     return default_base_emotions
@@ -112,8 +116,8 @@ def get_user_memory(user_id: str) -> str:
             return data["memory"]
     
     # If no memory found, use default and save it
-    user_doc_ref.set({"memory": _DEFAULT_MEMORY}, merge=True)
-    return _DEFAULT_MEMORY
+    user_doc_ref.set({"memory": DEFAULT_MEMORY}, merge=True)
+    return DEFAULT_MEMORY
 
 def update_user_memory(user_id: str, new_memory: str) -> None:
     """Update user memory for *user_id* in Firestore."""
@@ -147,7 +151,6 @@ def get_user_custom_instructions(user_id: str) -> str:
             return data["custom_instructions"]
     
     # If no custom instructions found, use default and save it
-    from config import DEFAULT_CUSTOM_INSTRUCTIONS # Import here to avoid circular dependency
     user_doc_ref.set({"custom_instructions": DEFAULT_CUSTOM_INSTRUCTIONS}, merge=True)
     return DEFAULT_CUSTOM_INSTRUCTIONS
 
@@ -183,7 +186,6 @@ def get_user_sensitivity(user_id: str) -> int:
             return data["sensitivity"]
     
     # If no sensitivity found, use default and save it
-    from config import DEFAULT_SENSITIVITY # Import here to avoid circular dependency
     user_doc_ref.set({"sensitivity": DEFAULT_SENSITIVITY}, merge=True)
     return DEFAULT_SENSITIVITY
 
@@ -206,47 +208,6 @@ def delete_user_sensitivity(user_id: str) -> bool:
         print(f"[Firebase] Error deleting sensitivity for user {user_id}: {e}")
         return False
 
-# ---------------------------------------------------------------------------
-# Personas helpers and defaults (CRUD) – per-user scope
-# ---------------------------------------------------------------------------
-
-# Default personas available to every *new* user
-from config import BASE_EMOTIONAL_STATE, DEFAULT_SENSITIVITY, DEFAULT_CUSTOM_INSTRUCTIONS  # local import to avoid reorder issues
-
-_DEFAULT_PERSONAS: list[dict] = [
-    {
-        "name": "Default Auri",
-        "baseEmotions": BASE_EMOTIONAL_STATE,
-        "sensitivity": DEFAULT_SENSITIVITY,
-        "customInstructions": DEFAULT_CUSTOM_INSTRUCTIONS,
-    },
-    {
-        "name": "Cheerful Buddy",
-        "baseEmotions": {
-            "Red": 5,
-            "Yellow": 50,
-            "Green": 20,
-            "Blue": 10,
-            "Purple": 15,
-        },
-        "sensitivity": 50,
-        "customInstructions": "You are an energetic and upbeat AI friend who always stays positive and encourages the user.",
-    },
-    {
-        "name": "Calm Sage",
-        "baseEmotions": {
-            "Red": 5,
-            "Yellow": 10,
-            "Green": 35,
-            "Blue": 45,
-            "Purple": 5,
-        },
-        "sensitivity": 25,
-        "customInstructions": "You are a calm and thoughtful guide who offers measured, reflective answers.",
-    },
-]
-
-
 # ---------------------------- Internal helpers -----------------------------
 
 def _persona_doc(user_id: str, persona_id: str):
@@ -267,7 +228,7 @@ def _ensure_default_personas_for_user(user_id: str) -> None:
 
     # Seed default personas; mark the first ("Default Auri") as most recently used
     now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-    for idx, persona in enumerate(_DEFAULT_PERSONAS):
+    for idx, persona in enumerate(DEFAULT_PERSONAS):
         try:
             persona_data = persona.copy()
             persona_data["lastUsed"] = now_iso if idx == 0 else None

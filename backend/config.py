@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+from typing import Any, Dict, List
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -51,6 +52,45 @@ DEFAULT_SENSITIVITY: int = 35          # Default sensitivity value (0-100)
 # ––– Custom Instructions Configuration ---------------------------------- #
 DEFAULT_CUSTOM_INSTRUCTIONS: str = "N/A"
 
+# ––– Default Memory ------------------------------------------------------- #
+DEFAULT_MEMORY: str = """
+EMPTY. This is my very first time meeting my human. I will introduce myself as Auri the AI Aura, and ask for the human's name!
+"""
+
+# ––– Default Personas ----------------------------------------------------- #
+DEFAULT_PERSONAS: List[Dict[str, Any]] = [
+    {
+        "name": "Default Auri",
+        "baseEmotions": BASE_EMOTIONAL_STATE,
+        "sensitivity": DEFAULT_SENSITIVITY,
+        "customInstructions": DEFAULT_CUSTOM_INSTRUCTIONS,
+    },
+    {
+        "name": "Cheerful Buddy",
+        "baseEmotions": {
+            "Red": 5,
+            "Yellow": 50,
+            "Green": 20,
+            "Blue": 10,
+            "Purple": 15,
+        },
+        "sensitivity": 50,
+        "customInstructions": "You are an energetic and upbeat AI friend who always stays positive and encourages the user.",
+    },
+    {
+        "name": "Calm Sage",
+        "baseEmotions": {
+            "Red": 5,
+            "Yellow": 10,
+            "Green": 35,
+            "Blue": 45,
+            "Purple": 5,
+        },
+        "sensitivity": 25,
+        "customInstructions": "You are a calm and thoughtful guide who offers measured, reflective answers.",
+    },
+]
+
 # ––– Default Generation Configuration -------------------------------------- #
 DEFAULT_GEN_CFG: Dict[str, Any] = {
     "stopSequences":      [],
@@ -92,8 +132,5 @@ MEMORY_SUMMARY_GEN_CFG: Dict[str, Any] = {
 # ––– Perplexity Web Search -------------------------------------------------- #
 PERPLEXITY_API_KEY: str = os.getenv("PERPLEXITY_API_KEY") or \
     (_ for _ in ()).throw(RuntimeError("PERPLEXITY_API_KEY is not set"))
-PERPLEXITY_MODEL_NAME: str = os.getenv("PERPLEXITY_MODEL", "sonar") # Renamed from PERPLEXITY_MODEL
+PERPLEXITY_MODEL_NAME: str = os.getenv("PERPLEXITY_MODEL", "sonar")
 PERPLEXITY_URL: str = "https://api.perplexity.ai/chat/completions"
-
-# For type hinting if needed elsewhere
-from typing import Any, Dict, List # Added this import 
