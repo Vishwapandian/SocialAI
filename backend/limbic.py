@@ -7,7 +7,7 @@ import time
 import math
 import random
 
-# Emotion related constants are in cfg (INITIAL_EMOTIONAL_STATE, EMOTION_KEYS, LIMBIC_MODEL_NAME, LIMBIC_GEMINI_URL)
+# Emotion related constants are in cfg (EMOTION_KEYS, LIMBIC_MODEL_NAME, LIMBIC_GEMINI_URL)
 
 def parse_drift_values(response_text: str) -> Dict[str, int] | None:
     """Parses the drift values from the LLM into a dictionary.

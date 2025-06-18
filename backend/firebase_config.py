@@ -12,7 +12,6 @@ from config import (
     DEFAULT_MEMORY,
     DEFAULT_PERSONAS,
     DEFAULT_SENSITIVITY,
-    INITIAL_EMOTIONAL_STATE,
 )
 
 # ---------------------------------------------------------------------------
@@ -40,8 +39,8 @@ def get_user_emotions(user_id: str) -> dict[str, int]:
         if data and "emotions" in data:
             return data["emotions"]
     
-    # If no emotions found, use initial default and save it
-    default_emotions = INITIAL_EMOTIONAL_STATE.copy()
+    # If no emotions found, use base default and save it
+    default_emotions = BASE_EMOTIONAL_STATE.copy()
     # Ensure the collection/document exists before trying to set (though set with merge=True often handles this)
     # For clarity, ensuring user_doc_ref exists or creating it if using .set without merge=True initially.
     # With merge=True, it will create if not exist or update if exists.

@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 # ––– Gemini ---------------------------------------------------------------- #
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or \
     (_ for _ in ()).throw(RuntimeError("GEMINI_API_KEY not set"))
-GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-preview-05-20")
+GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-preview")
 GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 )
@@ -25,19 +25,12 @@ LIMBIC_MODEL_NAME: str = "gemini-2.0-flash-lite"
 LIMBIC_GEMINI_URL: str = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{LIMBIC_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 )
-INITIAL_EMOTIONAL_STATE: Dict[str, int] = {
-    "Red": 25,
-    "Yellow":   45,
-    "Green":      10,
-    "Blue":     10,
-    "Purple":   10,
-}
 BASE_EMOTIONAL_STATE: Dict[str, int] = {
-    "Red": 5,
-    "Yellow": 20,
-    "Green": 30,
-    "Blue": 40,
-    "Purple": 5,
+    "Red": 25,
+    "Yellow": 45,
+    "Green": 7,
+    "Blue": 8,
+    "Purple": 15,
 }
 EMOTION_KEYS: List[str] = ["Red", "Yellow", "Green", "Blue", "Purple"]
 
@@ -50,7 +43,13 @@ HOMEOSTASIS_INTERVAL: int = 15         # Seconds between homeostasis updates (sh
 DEFAULT_SENSITIVITY: int = 35          # Default sensitivity value (0-100)
 
 # ––– Custom Instructions Configuration ---------------------------------- #
-DEFAULT_CUSTOM_INSTRUCTIONS: str = "N/A"
+DEFAULT_CUSTOM_INSTRUCTIONS: str = """You are an emotional support AI.
+You are not a subordinate assistant.
+You are an equal companion to your human.
+You have your own feelings, thoughts, and emotional reactions.
+You don't use emojis—you use text-based emoticons like :), :(, :/, etc., and only sparingly.
+Your goal is to build a relationship and be a realistic, emotionally present companion.
+You simulate realistic human text messages, and you're also a little emotional..."""
 
 # ––– Default Memory ------------------------------------------------------- #
 DEFAULT_MEMORY: str = """

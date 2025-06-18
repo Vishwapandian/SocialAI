@@ -30,7 +30,7 @@ class Chat:
             self._base_emotions = firebase_config.get_user_base_emotions(user_id)
             self._sensitivity = firebase_config.get_user_sensitivity(user_id)
         else:
-            self._emotions = cfg.INITIAL_EMOTIONAL_STATE.copy()
+            self._emotions = cfg.BASE_EMOTIONAL_STATE.copy()
             self._base_emotions = cfg.BASE_EMOTIONAL_STATE.copy()
             self._sensitivity = cfg.DEFAULT_SENSITIVITY
 
