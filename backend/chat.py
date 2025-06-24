@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import firebase_config
 import config as cfg
 import prompts as prompts
-# import tools as tools
+import tools as tools
 import limbic as limbic
 import memory as memory
 import time
@@ -73,17 +73,16 @@ class Chat:
 
     def send(self, message: str) -> Dict[str, Any]:
         """
-        Send *message* to Gemini.  Gemini may respond with a function call
-        (search_pinecone_memories) or with plain text.  If it calls the
-        function, we execute it, feed the result back to Gemini, and return
-        the model's final reply.
+        Send *message* to Gemini. Gemini must respond with a function call
+        to either send a message or use a tool. If it does not, it is
+        interpreted as the AI choosing to remain silent.
         """
         # ---- Apply homeostasis drift before processing message ---- #
         self._emotions = self.get_current_emotions()
         
         # ---- build user + memory‑aware system prompt ------------------ #
         system_instr = self._system_instruction()
-        self._append("user", message)                            # tentatively add
+        self._append("user", message)
 
         # ---- Update emotions based on new user message ---------------- #
         try:
@@ -98,79 +97,96 @@ class Chat:
         except Exception as e:
             print(f"[Chat] Emotion update failed: {e}") # Log and continue
 
-        # ---- 1st request: give Gemini the option to call RAG ----------- #
-        payload = {
-            "system_instruction": system_instr,
-            "contents":           self._history,
-            "generationConfig":   cfg.GEMINI_GEN_CFG,
-            # "tools":              [{"functionDeclarations": [tools.PINECONE_RAG_DECL, tools.WEB_SEARCH_DECL]}], # Updated to use tools
-            # leave function_calling_config default = AUTO
-        }
-        response = self._post_raw(cfg.GEMINI_URL, payload)
-        first_part = response["candidates"][0]["content"]["parts"][0]
-
-        # ---- Did Gemini ask to call our function? ---------------------- #
-        # if "functionCall" in first_part:
-        #     fn_call = first_part["functionCall"]
-        #     fn_name = fn_call["name"]
-        #     
-        #     # Execute the appropriate tool based on function name
-        #     if fn_name == "search_pinecone_memories":
-        #         tool_result = tools.search_pinecone_memories( # Updated to use tools
-        #             **fn_call.get("args", {}), user_id=self.user_id
-        #         )
-        #     elif fn_name == "search_web":
-        #         tool_result = tools.search_web(**fn_call.get("args", {})) # Updated to use tools
-        #     else:
-        #         tool_result = {"error": f"Unknown function: {fn_name}"}
-
-        #     # Gemini expects a *function response* message next
-        #     self._history.append({
-        #         "role": "model",
-        #         "parts": [{"functionCall": fn_call}],
-        #     })
-
-        #     # Determine the role for the function response part
-        #     function_response_role = "user"  # Default role
-        #     if fn_name == "search_pinecone_memories":
-        #         function_response_role = "memory_tool"
-        #     elif fn_name == "search_web":
-        #         function_response_role = "internet_tool"
-        #     # For unknown functions, tool_result is an error, and role remains "user"
-
-        #     self._history.append({
-        #         "role": function_response_role,
-        #         "parts": [{
-        #             "functionResponse": {
-        #                 "name": fn_call["name"],
-        #                 "response": tool_result       # keep it JSON
-        #             }
-        #         }],
-        #     })
-
-        #     # ---- 2nd request: get the *final* answer ------------------ #
-        #     payload = {
-        #         "system_instruction": system_instr,
-        #         "contents":           self._history,
-        #         "generationConfig":   cfg.GEMINI_GEN_CFG,
-        #         # keep tools so model can chain if it really wants
-        #         "tools":              [{"functionDeclarations": [tools.PINECONE_RAG_DECL, tools.WEB_SEARCH_DECL]}], # Updated to use tools
-        #     }
-        #     response = self._post_raw(cfg.GEMINI_URL, payload)
-        #     reply_text = response["candidates"][0]["content"]["parts"][0]["text"]
-
-        #     # store final reply
-        #     self._append("model", reply_text)
-        #     return {"reply": reply_text, "emotions": self._emotions.copy()}
-
-        # ---- No function call – simple path ---------------------------- #
-        reply_text = first_part["text"]
+        # ---- Interaction loop: allow for chained tool calls ----------- #
+        available_tools = [
+            {"functionDeclarations": [tools.SEND_CHAT_MESSAGE_DECL, tools.WEB_SEARCH_DECL]}
+        ]
         
-        # Clean up the response text for better M:N messaging
-        reply_text = self._format_response_for_messaging(reply_text)
-        
-        self._append("model", reply_text)
-        return {"reply": reply_text, "emotions": self._emotions.copy()}
+        for _ in range(5): # Max 5 tool calls
+            payload = {
+                "system_instruction": system_instr,
+                "contents":           self._history,
+                "generationConfig":   cfg.GEMINI_GEN_CFG,
+                "tools":              available_tools,
+            }
+            response = self._post_raw(cfg.GEMINI_URL, payload)
+
+            if not response.get("candidates"):
+                print("[Chat] Gemini response had no candidates. Interpreting as silence.")
+                return {"reply": "", "emotions": self._emotions.copy()}
+            
+            content = response["candidates"][0]["content"]
+            all_parts = content.get("parts", [])
+
+            # --- Filter for only parts that are valid function calls ---
+            all_tool_calls = [p for p in all_parts if "functionCall" in p]
+
+            if not all_tool_calls:
+                # Model returned text or nothing, which we treat as silence.
+                return {"reply": "", "emotions": self._emotions.copy()}
+
+            # --- Separate chat messages from other tools ---
+            chat_message_parts = [p for p in all_tool_calls if p["functionCall"].get("name") == "send_chat_message"]
+            other_tool_parts = [p for p in all_tool_calls if p["functionCall"].get("name") != "send_chat_message"]
+
+            # --- Handle chat messages: format and combine them ---
+            if chat_message_parts:
+                full_reply = []
+                for part in chat_message_parts:
+                    fn_call = part["functionCall"]
+                    # Log the original model-generated part
+                    self._history.append({"role": "model", "parts": [part]})
+                    
+                    message = fn_call.get("args", {}).get("message", "")
+                    full_reply.append(message)
+
+                formatted_reply = self._format_response_for_messaging("\n".join(full_reply))
+                self._append("model", formatted_reply)
+                return {"reply": formatted_reply, "emotions": self._emotions.copy()}
+            
+            # --- Handle other tool calls (e.g., web search) ---
+            if not other_tool_parts:
+                 # No other tools to call, and no chat messages means silence.
+                return {"reply": "", "emotions": self._emotions.copy()}
+
+            # For this implementation, we'll process one non-chat tool call per turn.
+            part = other_tool_parts[0]
+            fn_call = part["functionCall"]
+            fn_name = fn_call["name"]
+            
+            self._history.append({
+                "role": "model",
+                "parts": [part],
+            })
+            
+            if fn_name == "search_web":
+                tool_result = tools.search_web(**fn_call.get("args", {}))
+                self._history.append({
+                    "role": "internet_tool",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": fn_call["name"],
+                            "response": tool_result
+                        }
+                    }],
+                })
+                continue # continue loop to get final answer
+            else:
+                # Handle unknown function calls gracefully
+                tool_result = {"error": f"Unknown function call: {fn_name}"}
+                self._history.append({
+                    "role": "user",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": fn_name,
+                            "response": tool_result,
+                        }
+                    }],
+                })
+                continue # allow model to recover
+
+        # If we exit the loop, it's a silent failure.
+        return {"reply": "", "emotions": self._emotions.copy()}
 
     def _format_response_for_messaging(self, response: str) -> str:
         """
@@ -257,7 +273,7 @@ class Chat:
                 query = fc.get('args', {}).get('query', 'N/A')
                 lines.append(f"Self (system): Initiating tool call to '{tool_name}' with query: '{query}'.")
             elif "functionResponse" in part:  # Role could be "user", "memory_tool", or "internet_tool"
-                if exclude_tool_outputs and role in ["memory_tool", "internet_tool"]:
+                if exclude_tool_outputs and role in ["internet_tool"]:
                     continue # Skip these tool outputs if requested
 
                 fr = part["functionResponse"]
@@ -272,25 +288,13 @@ class Chat:
                         content_summary = web_text
                     else:
                         content_summary = f"Web search by '{tool_name_from_response}' yielded no text result or an empty result."
-                elif tool_name_from_response == 'search_pinecone_memories':
-                    pinecone_list = response_data.get('results')
-                    if isinstance(pinecone_list, list):
-                        meaningful_results = [r for r in pinecone_list if isinstance(r, str) and r.strip()]
-                        if meaningful_results:
-                            content_summary = "; ".join(meaningful_results)
-                        else:
-                            content_summary = f"Memory search by '{tool_name_from_response}' found no relevant snippets or returned empty."
-                    else:
-                        content_summary = f"Memory search by '{tool_name_from_response}' returned unexpected data format instead of a list."
                 
                 # Truncate if too long
                 if len(content_summary) > 250:
                     content_summary = content_summary[:247] + "..."
                 
                 prefix = f"Tool ({tool_name_from_response} output)" # Default fallback
-                if role == "memory_tool":
-                    prefix = f"Memory Tool ({tool_name_from_response} output)"
-                elif role == "internet_tool":
+                if role == "internet_tool":
                     prefix = f"Internet Tool ({tool_name_from_response} output)"
                 elif role == "user": 
                     prefix = f"System (tool output from {tool_name_from_response})"

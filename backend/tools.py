@@ -6,6 +6,21 @@ import config as cfg
 # --------------------------------------------------------------------------- #
 # Gemini function declaration – passed to the model on every request
 # --------------------------------------------------------------------------- #
+SEND_CHAT_MESSAGE_DECL = {
+    "name": "send_chat_message",
+    "description": "Sends a message to the user in the chat.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "message": {
+                "type": "string",
+                "description": "The message to send to the user."
+            }
+        },
+        "required": ["message"]
+    }
+}
+
 WEB_SEARCH_DECL = {
     "name":        "search_web",
     "description": (
@@ -28,6 +43,11 @@ WEB_SEARCH_DECL = {
 # --------------------------------------------------------------------------- #
 # Tool implementations
 # --------------------------------------------------------------------------- #
+def send_chat_message(*, message: str) -> Dict[str, Any]:
+    """A tool that represents sending a message to the user."""
+    return {"message": message}
+
+
 def search_web(*, query: str) -> Dict[str, Any]:
     """Searches the web using Perplexity API and returns the result."""
     headers = {
