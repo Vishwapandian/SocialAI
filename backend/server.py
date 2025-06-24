@@ -301,11 +301,10 @@ def manage_current_emotions():
             if not all(isinstance(new_emotions[key], int) for key in EMOTION_KEYS):
                 return jsonify({"error": "All emotion values must be integers"}), 400
             
-            # Validate that emotions sum to 100
-            total = sum(new_emotions.values())
-            if total != 100:
-                return jsonify({"error": "Emotions must sum to 100"}), 400
-            
+            # Validate that emotion values are within allowed range
+            if any(new_emotions[key] < -100 or new_emotions[key] > 100 for key in EMOTION_KEYS):
+                return jsonify({"error": "Emotion values must be between -100 and 100"}), 400
+
             update_user_emotions(user_id, new_emotions)
             
             # Update active session if it exists
@@ -352,11 +351,10 @@ def manage_base_emotions():
             if not all(isinstance(new_base_emotions[key], int) for key in EMOTION_KEYS):
                 return jsonify({"error": "All emotion values must be integers"}), 400
             
-            # Validate that emotions sum to 100
-            total = sum(new_base_emotions.values())
-            if total != 100:
-                return jsonify({"error": "Base emotions must sum to 100"}), 400
-            
+            # Validate that base emotion values are within allowed range
+            if any(new_base_emotions[key] < -100 or new_base_emotions[key] > 100 for key in EMOTION_KEYS):
+                return jsonify({"error": "Base emotion values must be between -100 and 100"}), 400
+
             update_user_base_emotions(user_id, new_base_emotions)
             
             # Update active session if it exists
@@ -517,8 +515,11 @@ def personas_collection():
             return jsonify({"error": f"All emotion keys required: {EMOTION_KEYS}"}), 400
         if not all(isinstance(base_emotions[key], int) for key in EMOTION_KEYS):
             return jsonify({"error": "Emotion values must be integers"}), 400
-        if sum(base_emotions.values()) != 100:
-            return jsonify({"error": "baseEmotions must sum to 100"}), 400
+        
+        # Validate that base emotion values are within allowed range
+        if any(base_emotions[key] < -100 or base_emotions[key] > 100 for key in EMOTION_KEYS):
+            return jsonify({"error": "Base emotion values must be between -100 and 100"}), 400
+        
         if sensitivity is None or not isinstance(sensitivity, int) or not 0 <= sensitivity <= 100:
             return jsonify({"error": "sensitivity must be an integer between 0 and 100"}), 400
         if custom_instructions is None:
@@ -590,8 +591,8 @@ def personas_document(persona_id: str):
                 return jsonify({"error": f"All emotion keys required: {EMOTION_KEYS}"}), 400
             if not all(isinstance(base_emotions[key], int) for key in EMOTION_KEYS):
                 return jsonify({"error": "Emotion values must be integers"}), 400
-            if sum(base_emotions.values()) != 100:
-                return jsonify({"error": "baseEmotions must sum to 100"}), 400
+            if any(base_emotions[key] < -100 or base_emotions[key] > 100 for key in EMOTION_KEYS):
+                return jsonify({"error": "Base emotion values must be between -100 and 100"}), 400
             update_payload["baseEmotions"] = base_emotions
 
         if "sensitivity" in data:
